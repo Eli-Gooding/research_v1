@@ -96,8 +96,8 @@ export default {
         console.log('Generated taskId:', taskId);
         
         try {
-          // Create a Durable Object ID using newUniqueId() instead of idFromString()
-          const doId = env.RESEARCH_TASK_DO.newUniqueId();
+          // Create a Durable Object ID using idFromName() with the taskId
+          const doId = env.RESEARCH_TASK_DO.idFromName(taskId);
           console.log('Created Durable Object ID:', doId.toString());
           
           // Get a stub for the Durable Object
@@ -144,8 +144,8 @@ export default {
       }
       
       try {
-        // Get a stub for the Durable Object
-        const doId = env.RESEARCH_TASK_DO.idFromString(taskId);
+        // Get a stub for the Durable Object using idFromName with the taskId
+        const doId = env.RESEARCH_TASK_DO.idFromName(taskId);
         const doStub = env.RESEARCH_TASK_DO.get(doId);
         
         // Get the task status from the Durable Object
@@ -318,12 +318,26 @@ export class ResearchTaskDO {
         // Store the task information
         await this.state.storage.put('targetUrl', targetUrl);
         await this.state.storage.put('taskId', taskId);
-        await this.state.storage.put('status', 'queued');
+        await this.state.storage.put('status', 'pending');
         await this.state.storage.put('createdAt', new Date().toISOString());
+        await this.state.storage.put('logs', JSON.stringify([{
+          timestamp: new Date().toISOString(),
+          message: 'Task created and queued for processing',
+          level: 'info'
+        }]));
         
         console.log('Task initialized successfully');
         
-        return new Response(JSON.stringify({ status: 'queued' }), {
+        // Start the scraping process asynchronously
+        this.startScraping().catch(error => {
+          console.error('Error in scraping process:', error);
+        });
+        
+        return new Response(JSON.stringify({ 
+          status: 'pending',
+          message: 'Task created and queued for processing',
+          taskId
+        }), {
           headers: { 'Content-Type': 'application/json' }
         });
       } catch (error) {
@@ -341,16 +355,29 @@ export class ResearchTaskDO {
     // Get the task status
     if (path === '/status' && request.method === 'GET') {
       try {
-        const status = await this.state.storage.get('status') || 'unknown';
-        const targetUrl = await this.state.storage.get('targetUrl');
-        const taskId = await this.state.storage.get('taskId');
-        const createdAt = await this.state.storage.get('createdAt');
+        const status = await this.state.storage.get('status') as string | undefined || 'unknown';
+        const targetUrl = await this.state.storage.get('targetUrl') as string | undefined;
+        const taskId = await this.state.storage.get('taskId') as string | undefined;
+        const createdAt = await this.state.storage.get('createdAt') as string | undefined;
+        const updatedAt = await this.state.storage.get('updatedAt') as string | undefined;
+        const completedAt = await this.state.storage.get('completedAt') as string | undefined;
+        const progress = await this.state.storage.get('progress') as number | undefined;
+        const error = await this.state.storage.get('error') as string | undefined;
+        
+        // Get the logs
+        const logsString = await this.state.storage.get('logs') as string | undefined || '[]';
+        const logs = JSON.parse(logsString);
         
         return new Response(JSON.stringify({
           status,
           targetUrl,
           taskId,
-          createdAt
+          createdAt,
+          updatedAt,
+          completedAt,
+          progress,
+          error,
+          logs: logs.slice(-10) // Return only the last 10 logs
         }), {
           headers: { 'Content-Type': 'application/json' }
         });
@@ -366,11 +393,244 @@ export class ResearchTaskDO {
       }
     }
     
+    // Manually trigger the scraping process (useful for testing)
+    if (path === '/start' && request.method === 'POST') {
+      try {
+        const currentStatus = await this.state.storage.get('status');
+        
+        if (currentStatus === 'in-progress') {
+          return new Response(JSON.stringify({ 
+            error: 'Task is already in progress'
+          }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        
+        if (currentStatus === 'completed') {
+          return new Response(JSON.stringify({ 
+            error: 'Task is already completed'
+          }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        
+        // Start the scraping process asynchronously
+        this.startScraping().catch(error => {
+          console.error('Error in scraping process:', error);
+        });
+        
+        return new Response(JSON.stringify({ 
+          status: 'in-progress',
+          message: 'Scraping process started'
+        }), {
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch (error) {
+        console.error('Error starting scraping process:', error);
+        return new Response(JSON.stringify({ 
+          error: 'Error starting scraping process',
+          message: error instanceof Error ? error.message : String(error)
+        }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+    }
+    
+    // Reset a task (useful for testing)
+    if (path === '/reset' && request.method === 'POST') {
+      try {
+        const targetUrl = await this.state.storage.get('targetUrl');
+        const taskId = await this.state.storage.get('taskId');
+        const createdAt = await this.state.storage.get('createdAt');
+        
+        // Reset the task status
+        await this.state.storage.put('status', 'pending');
+        await this.state.storage.put('updatedAt', new Date().toISOString());
+        await this.state.storage.delete('completedAt');
+        await this.state.storage.delete('progress');
+        await this.state.storage.delete('error');
+        
+        // Add a log entry
+        await this.addLogEntry('Task reset to pending status', 'info');
+        
+        return new Response(JSON.stringify({ 
+          status: 'pending',
+          message: 'Task reset to pending status',
+          taskId
+        }), {
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch (error) {
+        console.error('Error resetting task:', error);
+        return new Response(JSON.stringify({ 
+          error: 'Error resetting task',
+          message: error instanceof Error ? error.message : String(error)
+        }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+    }
+    
     // Handle unknown routes
     console.error('Unknown route requested:', path);
     return new Response(JSON.stringify({ error: 'Not found' }), {
       status: 404,
       headers: { 'Content-Type': 'application/json' }
     });
+  }
+  
+  // Helper method to add a log entry
+  private async addLogEntry(message: string, level: 'info' | 'warning' | 'error') {
+    const logsString = await this.state.storage.get('logs') as string | undefined || '[]';
+    const logs = JSON.parse(logsString);
+    
+    logs.push({
+      timestamp: new Date().toISOString(),
+      message,
+      level
+    });
+    
+    // Keep only the last 100 log entries to avoid excessive storage
+    const trimmedLogs = logs.slice(-100);
+    
+    await this.state.storage.put('logs', JSON.stringify(trimmedLogs));
+    console.log(`[${level.toUpperCase()}] ${message}`);
+  }
+  
+  // Main method to handle the scraping process
+  private async startScraping() {
+    try {
+      // Update the task status to in-progress
+      await this.state.storage.put('status', 'in-progress');
+      await this.state.storage.put('updatedAt', new Date().toISOString());
+      await this.addLogEntry('Scraping process started', 'info');
+      
+      // Get the target URL
+      const targetUrl = await this.state.storage.get('targetUrl') as string;
+      const taskId = await this.state.storage.get('taskId') as string;
+      
+      if (!targetUrl) {
+        throw new Error('Target URL not found in storage');
+      }
+      
+      // Update progress
+      await this.state.storage.put('progress', 10);
+      await this.addLogEntry('Fetching target URL', 'info');
+      
+      // Fetch the target URL
+      const response = await fetch(targetUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.5'
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch URL: ${response.status} ${response.statusText}`);
+      }
+      
+      // Update progress
+      await this.state.storage.put('progress', 30);
+      await this.addLogEntry('URL fetched successfully, processing content', 'info');
+      
+      // Get the response text
+      const html = await response.text();
+      
+      // Extract basic metadata
+      const title = this.extractTitle(html);
+      const description = this.extractMetaDescription(html);
+      const links = this.extractLinks(html, targetUrl);
+      
+      // Update progress
+      await this.state.storage.put('progress', 60);
+      await this.addLogEntry('Content processed, preparing report', 'info');
+      
+      // Create a report object
+      const report = {
+        taskId,
+        targetUrl,
+        scrapedAt: new Date().toISOString(),
+        metadata: {
+          title,
+          description
+        },
+        content: {
+          links: links.slice(0, 50) // Limit to 50 links to avoid excessive storage
+        },
+        rawHtml: html.substring(0, 10000) // Store only the first 10KB of HTML to avoid excessive storage
+      };
+      
+      // Store the report in R2
+      const reportJson = JSON.stringify(report);
+      await this.env.RESEARCH_REPORTS.put(`${taskId}.json`, reportJson, {
+        httpMetadata: {
+          contentType: 'application/json'
+        }
+      });
+      
+      // Update progress
+      await this.state.storage.put('progress', 100);
+      await this.state.storage.put('status', 'completed');
+      await this.state.storage.put('completedAt', new Date().toISOString());
+      await this.addLogEntry('Scraping completed successfully', 'info');
+      
+      console.log('Scraping process completed successfully');
+    } catch (error) {
+      console.error('Error in scraping process:', error);
+      
+      // Update the task status to error
+      await this.state.storage.put('status', 'error');
+      await this.state.storage.put('updatedAt', new Date().toISOString());
+      await this.state.storage.put('error', error instanceof Error ? error.message : String(error));
+      await this.addLogEntry(`Scraping failed: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    }
+  }
+  
+  // Helper method to extract the title from HTML
+  private extractTitle(html: string): string {
+    const titleMatch = html.match(/<title[^>]*>(.*?)<\/title>/i);
+    return titleMatch ? titleMatch[1].trim() : 'No title found';
+  }
+  
+  // Helper method to extract the meta description from HTML
+  private extractMetaDescription(html: string): string {
+    const descriptionMatch = html.match(/<meta[^>]*name=["']description["'][^>]*content=["'](.*?)["'][^>]*>/i) ||
+                            html.match(/<meta[^>]*content=["'](.*?)["'][^>]*name=["']description["'][^>]*>/i);
+    return descriptionMatch ? descriptionMatch[1].trim() : 'No description found';
+  }
+  
+  // Helper method to extract links from HTML
+  private extractLinks(html: string, baseUrl: string): Array<{ url: string, text: string }> {
+    const links: Array<{ url: string, text: string }> = [];
+    const linkRegex = /<a[^>]*href=["'](.*?)["'][^>]*>(.*?)<\/a>/gi;
+    
+    let match;
+    while ((match = linkRegex.exec(html)) !== null) {
+      const url = match[1].trim();
+      const text = match[2].replace(/<[^>]*>/g, '').trim(); // Remove any HTML tags inside the link text
+      
+      // Skip empty URLs, javascript: URLs, and anchor links
+      if (!url || url.startsWith('javascript:') || url === '#') {
+        continue;
+      }
+      
+      // Resolve relative URLs
+      let fullUrl = url;
+      try {
+        fullUrl = new URL(url, baseUrl).href;
+      } catch (e) {
+        // If URL parsing fails, just use the original URL
+        console.warn('Failed to parse URL:', url);
+      }
+      
+      links.push({ url: fullUrl, text: text || fullUrl });
+    }
+    
+    return links;
   }
 } 
