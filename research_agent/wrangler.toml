@@ -25,3 +25,17 @@ bucket_name = "research-reports"
 # AI Gateway binding for report generation
 [ai]
 binding = "AI_GATEWAY" 
+
+# Environment variables for local development
+# DO NOT put your actual API key here for production!
+# For local development only - use placeholders and set actual values with wrangler secret
+[vars]
+# OPENAI_API_KEY = "your-api-key-here" # DO NOT commit actual keys
+OPENAI_MODEL = "gpt-4"
+# Model pricing per 1K tokens (in USD)
+OPENAI_PROMPT_PRICE = "0.03"
+OPENAI_COMPLETION_PRICE = "0.06"
+
+# Add OpenAI API key as a secret
+# To set the secret locally: npx wrangler secret put OPENAI_API_KEY
+# For production: Set in Cloudflare Dashboard 

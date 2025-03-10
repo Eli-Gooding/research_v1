@@ -41,14 +41,95 @@ The project is being developed in phases:
    - Extract metadata
    - Handle basic error cases
 
-4. **Phase 4**: Storing Reports in Cloudflare R2
+4. **Phase 4**: Storing Reports in Cloudflare R2 ✅
    - Store scraped data and reports in R2 Storage
    - Make reports accessible via pre-signed URLs
 
-5. **Phase 5**: AI-Powered Report Generation
+5. **Phase 5**: AI-Powered Report Generation ✅
    - Generate structured reports using AI models via Cloudflare AI Gateway
    - Track API costs & latency
    - Implement caching & request optimization
+
+## AI-Powered Report Generation
+
+The AI report generation feature uses OpenAI's GPT-4 model via Cloudflare AI Gateway to analyze scraped website content and generate structured insights. The insights include:
+
+- Website summary
+- Main topics/themes
+- Target audience analysis
+- Products/services offered
+- Competitive positioning
+- Content strategy insights
+- SEO observations
+- Recommendations for competitive analysis
+
+### Setting Up OpenAI API Key
+
+To use the AI report generation feature, you need to set up an OpenAI API key:
+
+1. **Local Development**:
+   Create a `.dev.vars` file in the project root with your API key:
+   ```
+   OPENAI_API_KEY="your-api-key-here"
+   ```
+   This file is gitignored and won't be committed to version control.
+
+2. **Production Deployment**:
+   Set the `OPENAI_API_KEY` secret in the Cloudflare Dashboard.
+
+### Security Best Practices
+
+To protect sensitive information like API keys:
+
+1. **Never commit API keys to version control**:
+   - Use `.dev.vars` for local development
+   - Use Cloudflare secrets for production
+
+2. **If you accidentally committed an API key**:
+   - Revoke the key immediately in your OpenAI dashboard
+   - Generate a new key
+   - Use `git filter-branch` or tools like BFG Repo Cleaner to remove the key from git history
+   - Force push the cleaned history
+
+3. **For production deployments**:
+   ```bash
+   # Set secrets using wrangler
+   npx wrangler secret put OPENAI_API_KEY
+   ```
+
+### AI Gateway Monitoring
+
+The implementation tracks API usage metrics including:
+- Latency (response time)
+- Token usage (prompt, completion, total)
+- Cost per request (based on token usage)
+
+These metrics are stored with each task and can be used for monitoring and optimization.
+
+### Model Configuration
+
+You can configure which OpenAI model to use and its pricing:
+
+1. **In wrangler.toml**:
+   ```toml
+   [vars]
+   OPENAI_MODEL = "gpt-4"
+   OPENAI_PROMPT_PRICE = "0.03"
+   OPENAI_COMPLETION_PRICE = "0.06"
+   ```
+
+2. **At runtime via API**:
+   ```bash
+   # Get current configuration
+   curl http://localhost:8787/config
+   
+   # Update configuration
+   curl -X POST http://localhost:8787/config \
+     -H "Content-Type: application/json" \
+     -d '{"model": "gpt-4-turbo", "promptPrice": "0.01", "completionPrice": "0.03"}'
+   ```
+
+The configuration is stored in Durable Objects and persists across worker restarts.
 
 ## Getting Started
 

@@ -6,51 +6,122 @@
  * 2. Run this script: node test.js
  */
 
-// Replace with your worker URL after deployment
-const WORKER_URL = 'https://research-agent.your-account.workers.dev';
+// Use localhost for local testing
+const WORKER_URL = 'http://localhost:8787';
 
-async function testResearchAgent() {
-  console.log('Testing Research Agent API...');
+// Function to submit a URL for scraping
+async function submitUrl(url) {
+  console.log(`Submitting URL for scraping: ${url}`);
   
-  // Test URL submission
-  console.log('\n1. Testing URL submission...');
-  const submitResponse = await fetch(`${WORKER_URL}/scrape`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      targetUrl: 'https://example.com'
-    })
-  });
-  
-  const submitResult = await submitResponse.json();
-  console.log('Response:', submitResult);
-  
-  if (!submitResult.jobId) {
-    console.error('Error: No job ID returned');
-    return;
+  try {
+    const response = await fetch(`${WORKER_URL}/scrape`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ targetUrl: url })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to submit URL: ${response.status} ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    console.log('URL submitted successfully:', data);
+    return data.jobId;
+  } catch (error) {
+    console.error('Error submitting URL:', error);
+    throw error;
   }
-  
-  const jobId = submitResult.jobId;
-  console.log(`Job ID: ${jobId}`);
-  
-  // Test task status
-  console.log('\n2. Testing task status...');
-  const statusResponse = await fetch(`${WORKER_URL}/task/${jobId}`);
-  const statusResult = await statusResponse.json();
-  console.log('Response:', statusResult);
-  
-  // Note: The report won't be available immediately since we haven't implemented
-  // the scraping and report generation yet, but we can test the endpoint
-  console.log('\n3. Testing report retrieval (expected to fail)...');
-  const reportResponse = await fetch(`${WORKER_URL}/report/${jobId}`);
-  const reportResult = await reportResponse.json();
-  console.log('Response:', reportResult);
-  
-  console.log('\nTest completed!');
 }
 
-testResearchAgent().catch(error => {
-  console.error('Test failed:', error);
-}); 
+// Function to check the status of a scraping task
+async function checkTaskStatus(jobId) {
+  console.log(`Checking status of task: ${jobId}`);
+  
+  try {
+    const response = await fetch(`${WORKER_URL}/task/${jobId}`);
+    
+    if (!response.ok) {
+      throw new Error(`Failed to check task status: ${response.status} ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    console.log('Task status:', data);
+    return data;
+  } catch (error) {
+    console.error('Error checking task status:', error);
+    throw error;
+  }
+}
+
+// Function to get the report for a completed task
+async function getReport(jobId) {
+  console.log(`Getting report for task: ${jobId}`);
+  
+  try {
+    const response = await fetch(`${WORKER_URL}/report/${jobId}`);
+    
+    if (!response.ok) {
+      throw new Error(`Failed to get report: ${response.status} ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    console.log('Report URL:', data.reportUrl);
+    
+    // Fetch the actual report
+    const reportResponse = await fetch(data.reportUrl);
+    if (!reportResponse.ok) {
+      throw new Error(`Failed to fetch report content: ${reportResponse.status} ${reportResponse.statusText}`);
+    }
+    
+    const report = await reportResponse.json();
+    console.log('Report content:', JSON.stringify(report, null, 2));
+    
+    // Check if AI insights are present
+    if (report.aiInsights) {
+      console.log('AI Insights:', JSON.stringify(report.aiInsights, null, 2));
+    } else {
+      console.log('No AI insights found in the report');
+    }
+    
+    return report;
+  } catch (error) {
+    console.error('Error getting report:', error);
+    throw error;
+  }
+}
+
+// Main test function
+async function runTest() {
+  try {
+    // Submit a URL for scraping
+    const jobId = await submitUrl('https://example.com');
+    
+    // Poll for task completion
+    let taskStatus;
+    do {
+      await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds between checks
+      taskStatus = await checkTaskStatus(jobId);
+    } while (taskStatus.status !== 'completed' && taskStatus.status !== 'error');
+    
+    // If the task completed successfully, get the report
+    if (taskStatus.status === 'completed') {
+      const report = await getReport(jobId);
+      
+      // Verify AI insights
+      if (report.aiInsights && report.aiInsights.insights) {
+        console.log('✅ AI report generation test passed!');
+      } else {
+        console.log('❌ AI report generation test failed: No insights found');
+      }
+    } else {
+      console.log('❌ Task failed with error:', taskStatus.error);
+    }
+  } catch (error) {
+    console.error('Test failed:', error);
+  }
+}
+
+// Run the test
+runTest(); 

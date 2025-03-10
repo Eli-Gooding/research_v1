@@ -28,6 +28,13 @@ export interface Env {
   RESEARCH_REPORTS: R2Bucket;
   // AI Gateway for report generation
   AI_GATEWAY: any;
+  // OpenAI API Key for report generation
+  OPENAI_API_KEY: string;
+  // OpenAI model configuration
+  OPENAI_MODEL: string;
+  // Model pricing per 1K tokens (in USD)
+  OPENAI_PROMPT_PRICE: string;
+  OPENAI_COMPLETION_PRICE: string;
   // Static assets
   __STATIC_CONTENT: KVNamespace;
 }
@@ -51,356 +58,400 @@ function corsResponse(body: any, status = 200) {
 // Main fetch handler for the Worker
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    const url = new URL(request.url);
-    const path = url.pathname;
+    // Start timing for performance tracking
+    const requestStartTime = Date.now();
     
     // Handle CORS preflight requests
     if (request.method === 'OPTIONS') {
-      return new Response(null, {
-        status: 204,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS, PUT, DELETE',
-          'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
-          'Access-Control-Max-Age': '86400'
-        }
-      });
+      return corsResponse({}, 204);
     }
     
-    // Check if the R2 bucket is accessible
+    const url = new URL(request.url);
+    const path = url.pathname;
+    
+    console.log('Request received:', request.method, path);
+    
     try {
-      // Try to list objects in the bucket to verify access
-      const objects = await env.RESEARCH_REPORTS.list({ limit: 1 });
-      console.log('R2 bucket is accessible, found', objects.objects.length, 'objects');
-    } catch (error) {
-      console.error('Error accessing R2 bucket:', error);
-      // We'll continue even if there's an error, as the bucket might just be empty
-    }
-    
-    // Handle URL submission (Phase 1)
-    if (path === '/scrape' && request.method === 'POST') {
-      try {
-        // Parse the request body to get the target URL
-        let targetUrl: string;
+      // Serve static assets
+      if (request.method === 'GET' && !path.startsWith('/api/')) {
+        // For static content, return a simple response or try to serve from KV
+        try {
+          // If path is root, serve index.html
+          const assetPath = path === '/' ? 'index.html' : path.replace(/^\//, '');
+          console.log(`Serving static asset: ${assetPath}`);
+          
+          // Get the asset from the __STATIC_CONTENT namespace
+          const asset = await env.__STATIC_CONTENT.get(assetPath);
+          
+          if (asset === null) {
+            console.log(`Static asset not found: ${assetPath}`);
+            // Continue to API routes
+          } else {
+            // Determine content type based on file extension
+            let contentType = 'text/plain';
+            if (assetPath.endsWith('.html')) contentType = 'text/html';
+            else if (assetPath.endsWith('.css')) contentType = 'text/css';
+            else if (assetPath.endsWith('.js')) contentType = 'application/javascript';
+            else if (assetPath.endsWith('.json')) contentType = 'application/json';
+            else if (assetPath.endsWith('.png')) contentType = 'image/png';
+            else if (assetPath.endsWith('.jpg') || assetPath.endsWith('.jpeg')) contentType = 'image/jpeg';
+            else if (assetPath.endsWith('.svg')) contentType = 'image/svg+xml';
+            
+            return new Response(asset, {
+              headers: {
+                'Content-Type': contentType,
+                'Cache-Control': 'public, max-age=3600'
+              }
+            });
+          }
+        } catch (error) {
+          console.error('Error serving static asset:', error);
+          // Continue to API routes
+        }
+      }
+      
+      // API endpoints
+      if (path === '/scrape' && request.method === 'POST') {
+        const scrapeStartTime = Date.now();
+        
         try {
           const body = await request.json() as { targetUrl?: string };
-          targetUrl = body.targetUrl || '';
-          console.log('Received request with targetUrl:', targetUrl);
-        } catch (parseError) {
-          console.error('Error parsing request body:', parseError);
-          return corsResponse({ error: 'Invalid JSON in request body' }, 400);
-        }
-        
-        // Validate the URL
-        if (!targetUrl || typeof targetUrl !== 'string') {
-          console.error('Invalid or missing targetUrl parameter');
-          return corsResponse({ error: 'Invalid or missing targetUrl parameter' }, 400);
-        }
-        
-        try {
-          // Validate that the URL is properly formatted
-          new URL(targetUrl);
-        } catch (e) {
-          console.error('Invalid URL format:', e);
-          return corsResponse({ error: 'Invalid URL format' }, 400);
-        }
-        
-        // Generate a unique ID for this task
-        const taskId = crypto.randomUUID();
-        console.log('Generated taskId:', taskId);
-        
-        try {
-          // Create a Durable Object ID using idFromName() with the taskId
-          const doId = env.RESEARCH_TASK_DO.idFromName(taskId);
-          console.log('Created Durable Object ID:', doId.toString());
+          const targetUrl = body.targetUrl;
+          
+          if (!targetUrl) {
+            return corsResponse({ error: 'Missing targetUrl in request body' }, 400);
+          }
+          
+          // Validate URL
+          try {
+            new URL(targetUrl);
+          } catch (e) {
+            return corsResponse({ error: 'Invalid URL format' }, 400);
+          }
+          
+          // Generate a unique task ID
+          const taskId = crypto.randomUUID();
           
           // Get a stub for the Durable Object
-          const doStub = env.RESEARCH_TASK_DO.get(doId);
-          console.log('Got Durable Object stub');
+          const id = env.RESEARCH_TASK_DO.newUniqueId();
+          const stub = env.RESEARCH_TASK_DO.get(id);
           
           // Initialize the task in the Durable Object
-          console.log('Sending request to Durable Object');
-          const doResponse = await doStub.fetch("https://fake-host/init", {
+          await stub.fetch('https://dummy-url/init', {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ targetUrl, taskId })
+            body: JSON.stringify({
+              targetUrl,
+              taskId
+            })
           });
           
-          console.log('Received response from Durable Object:', await doResponse.text());
+          const scrapeEndTime = Date.now();
+          console.log(`Scrape request processed in ${scrapeEndTime - scrapeStartTime}ms`);
           
-          // Return the task ID to the client
           return corsResponse({
             status: 'queued',
-            jobId: taskId
+            jobId: taskId,
+            message: 'URL submitted for scraping'
           });
-        } catch (doError: unknown) {
-          console.error('Error with Durable Object operations:', doError);
-          const errorMessage = doError instanceof Error ? doError.message : String(doError);
-          return corsResponse({ error: 'Error processing task', details: errorMessage }, 500);
+        } catch (error) {
+          console.error('Error processing scrape request:', error);
+          return corsResponse({ error: 'Failed to process request' }, 500);
         }
-      } catch (error) {
-        console.error('Error processing scrape request:', error);
-        return corsResponse({ 
-          error: 'Internal server error', 
-          message: error instanceof Error ? error.message : String(error)
-        }, 500);
-      }
-    }
-    
-    // Handle task status checking (Phase 2)
-    if (path.startsWith('/task/') && request.method === 'GET') {
-      const taskId = path.split('/task/')[1];
-      
-      if (!taskId) {
-        return corsResponse({ error: 'Missing task ID' }, 400);
       }
       
-      try {
-        // Get a stub for the Durable Object using idFromName with the taskId
-        const doId = env.RESEARCH_TASK_DO.idFromName(taskId);
-        const doStub = env.RESEARCH_TASK_DO.get(doId);
+      // Get configuration endpoint
+      if (path === '/config' && request.method === 'GET') {
+        const configStartTime = Date.now();
         
-        // Get the task status from the Durable Object
-        const response = await doStub.fetch('http://do/status');
-        const result = await response.json();
+        // Return the current configuration
+        const config = {
+          model: env.OPENAI_MODEL || 'gpt-4',
+          promptPrice: env.OPENAI_PROMPT_PRICE || '0.03',
+          completionPrice: env.OPENAI_COMPLETION_PRICE || '0.06'
+        };
         
-        return corsResponse(result);
-      } catch (error) {
-        console.error('Error checking task status:', error);
-        return corsResponse({ error: 'Internal server error' }, 500);
-      }
-    }
-    
-    // Handle report retrieval (Phase 4)
-    if (path.startsWith('/report/') && request.method === 'GET') {
-      const taskId = path.split('/report/')[1];
-      
-      if (!taskId) {
-        return corsResponse({ error: 'Missing task ID' }, 400);
-      }
-      
-      try {
-        // Check if the report exists in R2
-        const reportObject = await env.RESEARCH_REPORTS.get(`${taskId}.json`);
-        
-        if (!reportObject) {
-          return corsResponse({ error: 'Report not found' }, 404);
-        }
-        
-        // Generate a presigned URL for the report
-        // Get the R2 bucket information from the request URL
-        const accountId = url.hostname.split('.')[0];
-        const bucketName = 'research-reports';
-        
-        // Configure the S3 client to use Cloudflare R2
-        // PRODUCTION NOTE: In production, you'll need to ensure your Cloudflare account ID is correctly
-        // extracted or configured. The Worker's credentials are automatically used by R2.
-        const s3Client = new S3Client({
-          region: 'auto',
-          endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
-          credentials: {
-            // These are placeholder values - R2 uses the Worker's credentials automatically
-            accessKeyId: 'placeholder',
-            secretAccessKey: 'placeholder'
-          }
-        });
-        
-        // Create a GetObject command for the report
-        const command = new GetObjectCommand({
-          Bucket: bucketName,
-          Key: `${taskId}.json`
-        });
-        
-        // Generate a presigned URL that expires in 1 hour (3600 seconds)
-        // PRODUCTION NOTE: In production, you may want to adjust the expiration time
-        // based on your security requirements
-        const presignedUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
-        
-        // For local development, we'll serve the report directly instead of using presigned URLs
-        // This helps avoid CORS and SSL issues in development
-        let reportData;
-        let reportUrl: string | null = presignedUrl;
-        
-        // Check if we're in a local development environment
-        // PRODUCTION NOTE: This automatically detects the environment and adapts the behavior
-        const isLocalDev = url.hostname.includes('localhost') || url.hostname.includes('127.0.0.1');
-        
-        if (isLocalDev) {
-          // For local development, read the report and return it directly
-          reportData = await reportObject.json();
-          reportUrl = null; // We won't use the presigned URL in local dev
-        }
-        
-        return corsResponse({
-          status: 'completed',
-          reportId: taskId,
-          reportUrl: reportUrl,
-          reportSize: reportObject.size,
-          reportEtag: reportObject.etag,
-          expiresIn: '1 hour',
-          // Include the report data directly in local development
-          ...(isLocalDev && { reportData })
-        });
-      } catch (error) {
-        console.error('Error retrieving report:', error);
-        return corsResponse({ error: 'Internal server error' }, 500);
-      }
-    }
-    
-    // Handle listing all reports (Phase 4)
-    if (path === '/reports' && request.method === 'GET') {
-      try {
-        // List all objects in the R2 bucket
-        const objects = await env.RESEARCH_REPORTS.list();
-        
-        // Map the objects to a more user-friendly format
-        const reports = objects.objects.map(obj => {
-          return {
-            reportId: obj.key.replace('.json', ''),
-            size: obj.size,
-            etag: obj.etag,
-            uploaded: obj.uploaded
-          };
-        });
+        const configEndTime = Date.now();
+        console.log(`Config request processed in ${configEndTime - configStartTime}ms`);
         
         return corsResponse({
           status: 'success',
-          count: reports.length,
-          reports: reports
+          config
         });
-      } catch (error) {
-        console.error('Error listing reports:', error);
-        return corsResponse({ error: 'Internal server error' }, 500);
-      }
-    }
-    
-    // Handle direct report download (for local development)
-    // PRODUCTION NOTE: This endpoint is useful in both local development and production.
-    // In production, it provides a direct download alternative to presigned URLs,
-    // which can be helpful if users encounter issues with the presigned URLs.
-    if (path.startsWith('/download/') && request.method === 'GET') {
-      const taskId = path.split('/download/')[1];
-      
-      if (!taskId) {
-        return corsResponse({ error: 'Missing task ID' }, 400);
       }
       
-      try {
-        // Check if the report exists in R2
-        const reportObject = await env.RESEARCH_REPORTS.get(`${taskId}.json`);
+      // Update configuration endpoint (for testing only, not for production)
+      if (path === '/config' && request.method === 'POST') {
+        const configStartTime = Date.now();
         
-        if (!reportObject) {
-          return corsResponse({ error: 'Report not found' }, 404);
-        }
-        
-        // Read the report data
-        const reportData = await reportObject.json();
-        
-        // Return the report data directly
-        return new Response(JSON.stringify(reportData, null, 2), {
-          status: 200,
-          headers: {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',
-            'Content-Disposition': `attachment; filename="${taskId}.json"`
+        try {
+          const body = await request.json() as { 
+            model?: string;
+            promptPrice?: string;
+            completionPrice?: string;
+          };
+          
+          console.log('Updating configuration:', body);
+          
+          // Store the configuration
+          if (body.model) {
+            await this.state.storage.put('config_model', body.model);
           }
-        });
-      } catch (error) {
-        console.error('Error downloading report:', error);
-        return corsResponse({ error: 'Internal server error' }, 500);
+          
+          if (body.promptPrice) {
+            await this.state.storage.put('config_promptPrice', body.promptPrice);
+          }
+          
+          if (body.completionPrice) {
+            await this.state.storage.put('config_completionPrice', body.completionPrice);
+          }
+          
+          // Return the updated configuration
+          const config = {
+            model: (await this.state.storage.get('config_model') as string) || this.env.OPENAI_MODEL || 'gpt-4',
+            promptPrice: (await this.state.storage.get('config_promptPrice') as string) || this.env.OPENAI_PROMPT_PRICE || '0.03',
+            completionPrice: (await this.state.storage.get('config_completionPrice') as string) || this.env.OPENAI_COMPLETION_PRICE || '0.06'
+          };
+          
+          const configEndTime = Date.now();
+          console.log(`Config update processed in ${configEndTime - configStartTime}ms`);
+          
+          return corsResponse({
+            status: 'success',
+            message: 'Configuration updated',
+            config: config
+          });
+        } catch (error) {
+          console.error('Error updating configuration:', error);
+          return corsResponse({ error: 'Failed to update configuration' }, 500);
+        }
       }
-    }
-    
-    // Serve static assets (index.html) for the root path
-    if (path === '/' || path === '/index.html') {
+      
+      // Check if the R2 bucket is accessible
       try {
-        // Try to get the static asset from the __STATIC_CONTENT namespace
-        let asset = null;
+        // Try to list objects in the bucket to verify access
+        const objects = await env.RESEARCH_REPORTS.list({ limit: 1 });
+        console.log('R2 bucket is accessible, found', objects.objects.length, 'objects');
+      } catch (error) {
+        console.error('Error accessing R2 bucket:', error);
+        // We'll continue even if there's an error, as the bucket might just be empty
+      }
+      
+      // Handle task status checking (Phase 2)
+      if (path.startsWith('/task/') && request.method === 'GET') {
+        const taskId = path.split('/task/')[1];
         
-        if (env.__STATIC_CONTENT) {
-          asset = await env.__STATIC_CONTENT.get('index.html');
+        if (!taskId) {
+          return corsResponse({ error: 'Missing task ID' }, 400);
         }
         
-        // If the asset is not found or __STATIC_CONTENT is not available,
-        // return a simple HTML response for local development
-        if (asset === null) {
-          return new Response(`
-            <!DOCTYPE html>
-            <html lang="en">
-            <head>
-              <meta charset="UTF-8">
-              <meta name="viewport" content="width=device-width, initial-scale=1.0">
-              <title>Research Agent API</title>
-              <style>
-                body {
-                  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                  max-width: 800px;
-                  margin: 0 auto;
-                  padding: 20px;
-                  line-height: 1.6;
-                }
-                h1 { color: #333; }
-                .endpoint {
-                  background: #f5f5f5;
-                  padding: 15px;
-                  border-radius: 5px;
-                  margin-bottom: 15px;
-                }
-                code {
-                  background: #e0e0e0;
-                  padding: 2px 5px;
-                  border-radius: 3px;
-                }
-              </style>
-            </head>
-            <body>
-              <h1>Research Agent API</h1>
-              <p>Welcome to the Research Agent API. Use the following endpoints:</p>
-              
-              <div class="endpoint">
-                <h2>Submit URL for Scraping</h2>
-                <p><code>POST /scrape</code></p>
-                <p>Request body: <code>{ "targetUrl": "https://example.com" }</code></p>
-              </div>
-              
-              <div class="endpoint">
-                <h2>Check Task Status</h2>
-                <p><code>GET /task/:id</code></p>
-              </div>
-              
-              <div class="endpoint">
-                <h2>Get Report</h2>
-                <p><code>GET /report/:id</code></p>
-              </div>
-              
-              <p>For more information, refer to the documentation.</p>
-            </body>
-            </html>
-          `, {
-            headers: {
-              'Content-Type': 'text/html',
-              'Cache-Control': 'no-cache'
+        try {
+          // Get a stub for the Durable Object using idFromName with the taskId
+          const doId = env.RESEARCH_TASK_DO.idFromName(taskId);
+          const doStub = env.RESEARCH_TASK_DO.get(doId);
+          
+          // Get the task status from the Durable Object
+          const response = await doStub.fetch('http://do/status');
+          
+          // Parse the response as text first to handle any JSON parsing errors
+          const responseText = await response.text();
+          let result;
+          
+          try {
+            result = JSON.parse(responseText);
+          } catch (parseError) {
+            console.error('Error parsing task status response:', parseError, 'Response text:', responseText);
+            return corsResponse({ 
+              error: 'Error parsing task status response',
+              responseText: responseText.substring(0, 100) // Include part of the response for debugging
+            }, 500);
+          }
+          
+          return corsResponse(result);
+        } catch (error) {
+          console.error('Error checking task status:', error);
+          return corsResponse({ error: 'Internal server error' }, 500);
+        }
+      }
+      
+      // Handle report retrieval (Phase 4)
+      if (path.startsWith('/report/') && request.method === 'GET') {
+        const taskId = path.split('/report/')[1];
+        
+        if (!taskId) {
+          return corsResponse({ error: 'Missing task ID' }, 400);
+        }
+        
+        try {
+          // Check if the report exists in R2
+          const reportObject = await env.RESEARCH_REPORTS.get(`${taskId}.json`);
+          
+          if (!reportObject) {
+            return corsResponse({ error: 'Report not found' }, 404);
+          }
+          
+          // Generate a presigned URL for the report
+          // Get the R2 bucket information from the request URL
+          const accountId = url.hostname.split('.')[0];
+          const bucketName = 'research-reports';
+          
+          // Configure the S3 client to use Cloudflare R2
+          // PRODUCTION NOTE: In production, you'll need to ensure your Cloudflare account ID is correctly
+          // extracted or configured. The Worker's credentials are automatically used by R2.
+          const s3Client = new S3Client({
+            region: 'auto',
+            endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+            credentials: {
+              // These are placeholder values - R2 uses the Worker's credentials automatically
+              accessKeyId: 'placeholder',
+              secretAccessKey: 'placeholder'
             }
           });
+          
+          // Create a GetObject command for the report
+          const command = new GetObjectCommand({
+            Bucket: bucketName,
+            Key: `${taskId}.json`
+          });
+          
+          // Generate a presigned URL that expires in 1 hour (3600 seconds)
+          // PRODUCTION NOTE: In production, you may want to adjust the expiration time
+          // based on your security requirements
+          const presignedUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
+          
+          // For local development, we'll serve the report directly instead of using presigned URLs
+          // This helps avoid CORS and SSL issues in development
+          let reportData;
+          let reportUrl: string | null = presignedUrl;
+          
+          // Check if we're in a local development environment
+          // PRODUCTION NOTE: This automatically detects the environment and adapts the behavior
+          const isLocalDev = url.hostname.includes('localhost') || url.hostname.includes('127.0.0.1');
+          
+          if (isLocalDev) {
+            // For local development, read the report and return it directly
+            try {
+              const reportText = await reportObject.text();
+              reportData = JSON.parse(reportText);
+            } catch (parseError) {
+              console.error('Error parsing report:', parseError);
+              return corsResponse({ 
+                error: 'Error parsing report',
+                details: parseError instanceof Error ? parseError.message : String(parseError)
+              }, 500);
+            }
+            reportUrl = null; // We won't use the presigned URL in local dev
+          }
+          
+          return corsResponse({
+            status: 'completed',
+            reportId: taskId,
+            reportUrl: reportUrl,
+            reportSize: reportObject.size,
+            reportEtag: reportObject.etag,
+            expiresIn: '1 hour',
+            // Include the report data directly in local development
+            ...(isLocalDev && { reportData })
+          });
+        } catch (error) {
+          console.error('Error retrieving report:', error);
+          return corsResponse({ error: 'Internal server error' }, 500);
+        }
+      }
+      
+      // Handle listing all reports (Phase 4)
+      if (path === '/reports' && request.method === 'GET') {
+        try {
+          // List all objects in the R2 bucket
+          const objects = await env.RESEARCH_REPORTS.list();
+          
+          // Map the objects to a more user-friendly format
+          const reports = objects.objects.map(obj => {
+            return {
+              reportId: obj.key.replace('.json', ''),
+              size: obj.size,
+              etag: obj.etag,
+              uploaded: obj.uploaded
+            };
+          });
+          
+          return corsResponse({
+            status: 'success',
+            count: reports.length,
+            reports
+          });
+        } catch (error) {
+          console.error('Error listing reports:', error);
+          return corsResponse({ 
+            error: 'Error listing reports',
+            details: error instanceof Error ? error.message : String(error)
+          }, 500);
+        }
+      }
+      
+      // Handle direct report download (for local development)
+      // PRODUCTION NOTE: This endpoint is useful in both local development and production.
+      // In production, it provides a direct download alternative to presigned URLs,
+      // which can be helpful if users encounter issues with the presigned URLs.
+      if (path.startsWith('/download/') && request.method === 'GET') {
+        const taskId = path.split('/download/')[1];
+        
+        if (!taskId) {
+          return corsResponse({ error: 'Missing task ID' }, 400);
         }
         
-        return new Response(asset, {
-          headers: {
-            'Content-Type': 'text/html',
-            'Cache-Control': 'public, max-age=3600',
-            'Access-Control-Allow-Origin': '*'
+        try {
+          // Check if the report exists in R2
+          const reportObject = await env.RESEARCH_REPORTS.get(`${taskId}.json`);
+          
+          if (!reportObject) {
+            return corsResponse({ error: 'Report not found' }, 404);
           }
-        });
-      } catch (error) {
-        console.error('Error serving static asset:', error);
-        return new Response('Internal server error', { status: 500 });
+          
+          // Read the report data
+          const reportData = await reportObject.json();
+          
+          // Return the report data directly
+          return new Response(JSON.stringify(reportData, null, 2), {
+            status: 200,
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*',
+              'Content-Disposition': `attachment; filename="${taskId}.json"`
+            }
+          });
+        } catch (error) {
+          console.error('Error downloading report:', error);
+          return corsResponse({ error: 'Internal server error' }, 500);
+        }
       }
+      
+      // Log execution time at the end of the request
+      const requestEndTime = Date.now();
+      console.log(`Total request execution time: ${requestEndTime - requestStartTime}ms`);
+      
+      // Return 404 for unknown routes
+      return corsResponse({ error: 'Not found' }, 404);
+    } catch (error) {
+      console.error('Unhandled error:', error);
+      
+      // Log execution time for failed requests
+      const requestEndTime = Date.now();
+      console.log(`Failed request execution time: ${requestEndTime - requestStartTime}ms`);
+      
+      return corsResponse({ error: 'Internal server error' }, 500);
     }
-    
-    // Handle unknown routes
-    return corsResponse({ error: 'Not found' }, 404);
+  },
+  
+  // Helper method to determine content type based on file extension
+  getContentType(path: string): string {
+    if (path.endsWith('.html')) return 'text/html';
+    if (path.endsWith('.css')) return 'text/css';
+    if (path.endsWith('.js')) return 'application/javascript';
+    if (path.endsWith('.json')) return 'application/json';
+    if (path.endsWith('.png')) return 'image/png';
+    if (path.endsWith('.jpg') || path.endsWith('.jpeg')) return 'image/jpeg';
+    if (path.endsWith('.svg')) return 'image/svg+xml';
+    return 'text/plain';
   }
 };
 
@@ -475,6 +526,83 @@ export class ResearchTaskDO {
       }
     }
     
+    // Get configuration
+    if (path === '/config' && request.method === 'GET') {
+      try {
+        // Return the current configuration
+        const config = {
+          model: (await this.state.storage.get('config_model') as string) || this.env.OPENAI_MODEL || 'gpt-4',
+          promptPrice: (await this.state.storage.get('config_promptPrice') as string) || this.env.OPENAI_PROMPT_PRICE || '0.03',
+          completionPrice: (await this.state.storage.get('config_completionPrice') as string) || this.env.OPENAI_COMPLETION_PRICE || '0.06'
+        };
+        
+        return new Response(JSON.stringify({
+          status: 'success',
+          config
+        }), {
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch (error) {
+        console.error('Error getting configuration:', error);
+        return new Response(JSON.stringify({
+          error: 'Failed to get configuration',
+          details: error instanceof Error ? error.message : String(error)
+        }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+    }
+    
+    // Update configuration
+    if (path === '/config' && request.method === 'POST') {
+      try {
+        const body = await request.json() as { 
+          model?: string;
+          promptPrice?: string;
+          completionPrice?: string;
+        };
+        
+        console.log('Updating configuration:', body);
+        
+        // Store the configuration
+        if (body.model) {
+          await this.state.storage.put('config_model', body.model);
+        }
+        
+        if (body.promptPrice) {
+          await this.state.storage.put('config_promptPrice', body.promptPrice);
+        }
+        
+        if (body.completionPrice) {
+          await this.state.storage.put('config_completionPrice', body.completionPrice);
+        }
+        
+        // Return the updated configuration
+        const config = {
+          model: (await this.state.storage.get('config_model') as string) || this.env.OPENAI_MODEL || 'gpt-4',
+          promptPrice: (await this.state.storage.get('config_promptPrice') as string) || this.env.OPENAI_PROMPT_PRICE || '0.03',
+          completionPrice: (await this.state.storage.get('config_completionPrice') as string) || this.env.OPENAI_COMPLETION_PRICE || '0.06'
+        };
+        
+        return new Response(JSON.stringify({
+          status: 'success',
+          config
+        }), {
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch (error) {
+        console.error('Error updating configuration:', error);
+        return new Response(JSON.stringify({
+          error: 'Failed to update configuration',
+          details: error instanceof Error ? error.message : String(error)
+        }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+    }
+    
     // Get the task status
     if (path === '/status' && request.method === 'GET') {
       try {
@@ -488,8 +616,16 @@ export class ResearchTaskDO {
         const error = await this.state.storage.get('error') as string | undefined;
         
         // Get the logs
-        const logsString = await this.state.storage.get('logs') as string | undefined || '[]';
-        const logs = JSON.parse(logsString);
+        let logs = [];
+        try {
+          const logsString = await this.state.storage.get('logs') as string | undefined;
+          if (logsString) {
+            logs = JSON.parse(logsString);
+          }
+        } catch (logError) {
+          console.error('Error parsing logs:', logError);
+          // Continue with empty logs
+        }
         
         return new Response(JSON.stringify({
           status,
@@ -626,6 +762,10 @@ export class ResearchTaskDO {
   
   // Main method to handle the scraping process
   private async startScraping() {
+    const scrapingStartTime = Date.now();
+    let currentStage = 'initialization';
+    let taskId = 'unknown';
+    
     try {
       // Update the task status to in-progress
       await this.state.storage.put('status', 'in-progress');
@@ -634,7 +774,7 @@ export class ResearchTaskDO {
       
       // Get the target URL
       const targetUrl = await this.state.storage.get('targetUrl') as string;
-      const taskId = await this.state.storage.get('taskId') as string;
+      taskId = await this.state.storage.get('taskId') as string || 'unknown';
       
       console.log(`[${taskId}] Starting scraping process for URL: ${targetUrl}`);
       
@@ -647,9 +787,12 @@ export class ResearchTaskDO {
       await this.addLogEntry('Fetching target URL', 'info');
       
       // Fetch the target URL with improved error handling
+      currentStage = 'fetching';
+      const fetchStartTime = Date.now();
       console.log(`[${taskId}] Fetching URL with retry logic`);
       const response = await this.fetchWithRetry(targetUrl);
-      console.log(`[${taskId}] URL fetched successfully`);
+      const fetchEndTime = Date.now();
+      console.log(`[${taskId}] URL fetched successfully in ${fetchEndTime - fetchStartTime}ms`);
       
       // Update progress
       await this.state.storage.put('progress', 30);
@@ -677,6 +820,8 @@ export class ResearchTaskDO {
       };
       
       // Process HTML content
+      currentStage = 'parsing';
+      const parsingStartTime = Date.now();
       if (contentType.includes('text/html')) {
         console.log(`[${taskId}] Processing HTML content with HTMLRewriter`);
         // Use HTMLRewriter to parse the HTML
@@ -700,13 +845,28 @@ export class ResearchTaskDO {
         extractedData.rawContent = await response.text().then(text => text.substring(0, 10000));
         console.log(`[${taskId}] Stored ${extractedData.rawContent.length} characters of raw content`);
       }
+      const parsingEndTime = Date.now();
+      console.log(`[${taskId}] Content parsing completed in ${parsingEndTime - parsingStartTime}ms`);
       
       // Update progress
       await this.state.storage.put('progress', 60);
-      await this.addLogEntry('Content processed, preparing report', 'info');
-      console.log(`[${taskId}] Content processed, preparing report`);
+      await this.addLogEntry('Content processed, generating AI insights', 'info');
+      console.log(`[${taskId}] Content processed, generating AI insights`);
+      
+      // Generate AI insights
+      currentStage = 'ai_processing';
+      const aiStartTime = Date.now();
+      const aiInsights = await this.generateAIInsights(extractedData, targetUrl);
+      const aiEndTime = Date.now();
+      console.log(`[${taskId}] AI insights generated successfully in ${aiEndTime - aiStartTime}ms`);
+      
+      // Update progress
+      await this.state.storage.put('progress', 80);
+      await this.addLogEntry('AI insights generated, preparing final report', 'info');
       
       // Create a report object
+      currentStage = 'report_generation';
+      const reportStartTime = Date.now();
       const report = {
         taskId,
         targetUrl,
@@ -724,10 +884,20 @@ export class ResearchTaskDO {
           links: extractedData.links.slice(0, 100), // Limit to 100 links
           images: extractedData.images.slice(0, 50) // Limit to 50 images
         },
-        rawHtml: extractedData.rawHtml || extractedData.rawContent
+        aiInsights: aiInsights,
+        rawHtml: extractedData.rawHtml || extractedData.rawContent,
+        performance: {
+          total_time_ms: 0, // Will be updated at the end
+          fetch_time_ms: fetchEndTime - fetchStartTime,
+          parsing_time_ms: parsingEndTime - parsingStartTime,
+          ai_processing_time_ms: aiEndTime - aiStartTime,
+          storage_time_ms: 0 // Will be updated after storage
+        }
       };
       
       // Store the report in R2
+      currentStage = 'storage';
+      const storageStartTime = Date.now();
       console.log(`[${taskId}] Storing report in R2`);
       const reportJson = JSON.stringify(report);
       await this.env.RESEARCH_REPORTS.put(`${taskId}.json`, reportJson, {
@@ -735,15 +905,29 @@ export class ResearchTaskDO {
           contentType: 'application/json'
         }
       });
-      console.log(`[${taskId}] Report stored successfully, size: ${reportJson.length} bytes`);
+      const storageEndTime = Date.now();
+      console.log(`[${taskId}] Report stored successfully in ${storageEndTime - storageStartTime}ms, size: ${reportJson.length} bytes`);
+      
+      // Update the performance metrics
+      report.performance.storage_time_ms = storageEndTime - storageStartTime;
+      report.performance.total_time_ms = Date.now() - scrapingStartTime;
+      
+      // Store the updated report with final performance metrics
+      await this.env.RESEARCH_REPORTS.put(`${taskId}.json`, JSON.stringify(report), {
+        httpMetadata: {
+          contentType: 'application/json'
+        }
+      });
       
       // Update progress
       await this.state.storage.put('progress', 100);
       await this.state.storage.put('status', 'completed');
       await this.state.storage.put('completedAt', new Date().toISOString());
-      await this.addLogEntry('Scraping completed successfully', 'info');
+      await this.state.storage.put('performance', JSON.stringify(report.performance));
+      await this.addLogEntry(`Scraping completed successfully in ${report.performance.total_time_ms}ms`, 'info');
       
-      console.log(`[${taskId}] Scraping process completed successfully`);
+      const scrapingEndTime = Date.now();
+      console.log(`[${taskId}] Scraping process completed successfully in ${scrapingEndTime - scrapingStartTime}ms`);
     } catch (error) {
       console.error('Error in scraping process:', error);
       
@@ -751,8 +935,194 @@ export class ResearchTaskDO {
       await this.state.storage.put('status', 'error');
       await this.state.storage.put('updatedAt', new Date().toISOString());
       await this.state.storage.put('error', error instanceof Error ? error.message : String(error));
-      await this.addLogEntry(`Scraping failed: ${error instanceof Error ? error.message : String(error)}`, 'error');
+      await this.state.storage.put('errorStage', currentStage);
+      await this.addLogEntry(`Scraping failed at stage '${currentStage}': ${error instanceof Error ? error.message : String(error)}`, 'error');
+      
+      const scrapingEndTime = Date.now();
+      console.log(`[${taskId}] Scraping process failed in ${scrapingEndTime - scrapingStartTime}ms at stage '${currentStage}'`);
     }
+  }
+  
+  /**
+   * Generate AI insights from the extracted data using OpenAI via Cloudflare AI Gateway
+   * This method tracks API costs and latency using AI Gateway's built-in observability
+   */
+  private async generateAIInsights(extractedData: any, targetUrl: string): Promise<any> {
+    try {
+      const taskId = await this.state.storage.get('taskId') as string;
+      console.log(`[${taskId}] Generating AI insights for ${targetUrl}`);
+      await this.addLogEntry('Generating AI insights using OpenAI', 'info');
+      
+      // Get model configuration from storage or environment variables
+      const model = (await this.state.storage.get('config_model') as string) || this.env.OPENAI_MODEL || 'gpt-4';
+      const promptPriceStr = (await this.state.storage.get('config_promptPrice') as string) || this.env.OPENAI_PROMPT_PRICE || '0.03';
+      const completionPriceStr = (await this.state.storage.get('config_completionPrice') as string) || this.env.OPENAI_COMPLETION_PRICE || '0.06';
+      
+      // Ensure we're working with strings before parsing to float
+      const promptPrice = parseFloat(String(promptPriceStr));
+      const completionPrice = parseFloat(String(completionPriceStr));
+      
+      console.log(`[${taskId}] Using model: ${model} (Prompt: $${promptPrice}/1K tokens, Completion: $${completionPrice}/1K tokens)`);
+      await this.addLogEntry(`Using OpenAI model: ${model}`, 'info');
+      
+      // Start timing for latency tracking
+      const startTime = Date.now();
+      
+      // Prepare the prompt for OpenAI
+      const prompt = this.prepareAIPrompt(extractedData, targetUrl);
+      
+      // Call OpenAI via Cloudflare AI Gateway
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.env.OPENAI_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: model,
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a competitive research analyst. Your task is to analyze website content and provide structured insights.'
+            },
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          temperature: 0.3,
+          max_tokens: 1000
+        })
+      });
+      
+      // Calculate latency
+      const latency = Date.now() - startTime;
+      console.log(`[${taskId}] AI request completed in ${latency}ms`);
+      await this.addLogEntry(`AI request completed in ${latency}ms`, 'info');
+      
+      // Check if the request was successful
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`[${taskId}] Error from OpenAI API:`, errorText);
+        await this.addLogEntry(`Error from OpenAI API: ${errorText}`, 'error');
+        return {
+          error: `Failed to generate AI insights: ${response.status} ${response.statusText}`,
+          raw_error: errorText
+        };
+      }
+      
+      // Parse the response
+      const result = await response.json() as {
+        choices: Array<{
+          message: {
+            content: string;
+          };
+        }>;
+        usage?: {
+          prompt_tokens: number;
+          completion_tokens: number;
+          total_tokens: number;
+        };
+      };
+      
+      const insights = result.choices[0].message.content;
+      
+      // Try to parse the insights as JSON if possible
+      let structuredInsights;
+      try {
+        structuredInsights = JSON.parse(insights);
+      } catch (e) {
+        // If not valid JSON, return as raw text
+        structuredInsights = { raw: insights };
+      }
+      
+      // Calculate estimated cost based on token usage
+      const promptTokens = result.usage?.prompt_tokens || 0;
+      const completionTokens = result.usage?.completion_tokens || 0;
+      const promptCost = (promptTokens / 1000) * promptPrice;
+      const completionCost = (completionTokens / 1000) * completionPrice;
+      const totalCost = promptCost + completionCost;
+      
+      // Store API usage metrics
+      const apiUsage = {
+        model: model,
+        latency,
+        tokens: {
+          prompt: promptTokens,
+          completion: completionTokens,
+          total: result.usage?.total_tokens || 0
+        },
+        cost: {
+          prompt: promptCost.toFixed(6),
+          completion: completionCost.toFixed(6),
+          total: totalCost.toFixed(6),
+          currency: 'USD'
+        },
+        timestamp: new Date().toISOString()
+      };
+      
+      await this.state.storage.put('aiUsage', JSON.stringify(apiUsage));
+      console.log(`[${taskId}] AI usage metrics stored: ${JSON.stringify(apiUsage)}`);
+      await this.addLogEntry(`AI request cost: $${totalCost.toFixed(6)} (${promptTokens} prompt tokens, ${completionTokens} completion tokens)`, 'info');
+      
+      return {
+        insights: structuredInsights,
+        usage: apiUsage
+      };
+    } catch (error) {
+      console.error('Error generating AI insights:', error);
+      await this.addLogEntry(`Error generating AI insights: ${error instanceof Error ? error.message : String(error)}`, 'error');
+      return {
+        error: `Failed to generate AI insights: ${error instanceof Error ? error.message : String(error)}`
+      };
+    }
+  }
+  
+  /**
+   * Prepare a prompt for the AI model based on the extracted data
+   */
+  private prepareAIPrompt(extractedData: any, targetUrl: string): string {
+    // Create a structured prompt for the AI
+    return `
+Analyze the following website content from ${targetUrl}:
+
+TITLE: ${extractedData.title || 'N/A'}
+DESCRIPTION: ${extractedData.description || 'N/A'}
+KEYWORDS: ${extractedData.keywords || 'N/A'}
+
+HEADINGS:
+${extractedData.headings.h1.map((h: string) => `H1: ${h}`).join('\n')}
+${extractedData.headings.h2.slice(0, 10).map((h: string) => `H2: ${h}`).join('\n')}
+${extractedData.headings.h3.slice(0, 10).map((h: string) => `H3: ${h}`).join('\n')}
+
+LINKS (sample):
+${extractedData.links.slice(0, 20).map((link: any) => `- ${link.text || 'N/A'}: ${link.url || 'N/A'}`).join('\n')}
+
+IMAGES (sample):
+${extractedData.images.slice(0, 10).map((img: any) => `- ${img.alt || 'N/A'}: ${img.src || 'N/A'}`).join('\n')}
+
+Based on this content, provide the following analysis in JSON format:
+1. A brief summary of what this website is about (2-3 sentences)
+2. The main topics or themes of the website
+3. The target audience of the website
+4. Key products or services offered (if applicable)
+5. Competitive positioning (how they position themselves in the market)
+6. Content strategy insights (what type of content they focus on)
+7. SEO observations (based on keywords, meta tags, etc.)
+8. Recommendations for competitive analysis
+
+Format your response as valid JSON with the following structure:
+{
+  "summary": "string",
+  "main_topics": ["string", "string"],
+  "target_audience": "string",
+  "products_services": ["string", "string"],
+  "competitive_positioning": "string",
+  "content_strategy": "string",
+  "seo_observations": "string",
+  "recommendations": ["string", "string"]
+}
+`;
   }
   
   // Fetch with retry logic to handle temporary failures
