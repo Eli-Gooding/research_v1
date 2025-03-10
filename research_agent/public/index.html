@@ -59,6 +59,74 @@
       color: #d32f2f;
       font-weight: bold;
     }
+    .tabs {
+      display: flex;
+      margin-bottom: 10px;
+      border-bottom: 1px solid #ddd;
+    }
+    .tab {
+      padding: 8px 16px;
+      cursor: pointer;
+      border: 1px solid transparent;
+      border-bottom: none;
+      margin-right: 5px;
+      border-radius: 4px 4px 0 0;
+    }
+    .tab.active {
+      background: #f1f1f1;
+      border-color: #ddd;
+    }
+    .tab-content {
+      display: none;
+    }
+    .tab-content.active {
+      display: block;
+    }
+    .feature-card {
+      background: white;
+      border: 1px solid #eee;
+      border-radius: 4px;
+      padding: 10px;
+      margin-bottom: 10px;
+    }
+    .feature-card h4 {
+      margin-top: 0;
+      margin-bottom: 5px;
+    }
+    .feature-card.highlighted {
+      border-left: 4px solid #4285f4;
+    }
+    .pricing-plan {
+      background: white;
+      border: 1px solid #eee;
+      border-radius: 4px;
+      padding: 15px;
+      margin-bottom: 15px;
+    }
+    .pricing-plan h4 {
+      margin-top: 0;
+      border-bottom: 1px solid #eee;
+      padding-bottom: 5px;
+    }
+    .persona-card {
+      background: white;
+      border: 1px solid #eee;
+      border-radius: 4px;
+      padding: 15px;
+      margin-bottom: 15px;
+    }
+    .persona-card h4 {
+      margin-top: 0;
+    }
+    .tag {
+      display: inline-block;
+      background: #e0e0e0;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 12px;
+      margin-right: 5px;
+      margin-bottom: 5px;
+    }
   </style>
 </head>
 <body>
@@ -95,16 +163,64 @@
   </div>
   
   <div class="card">
+    <h2>Get Detailed Analysis</h2>
+    <form id="analysisForm">
+      <label for="analysisId">Analysis ID:</label>
+      <input type="text" id="analysisId" name="analysisId" placeholder="Enter task ID" required>
+      <button type="submit">Get Analysis</button>
+    </form>
+    <div id="analysisResult"></div>
+    <div id="analysisContent" style="display: none;">
+      <div class="tabs">
+        <div class="tab active" data-tab="features">Features</div>
+        <div class="tab" data-tab="pricing">Pricing</div>
+        <div class="tab" data-tab="customers">Customers</div>
+        <div class="tab" data-tab="raw">Raw Data</div>
+      </div>
+      
+      <div class="tab-content active" id="features-tab">
+        <h3>Product Features</h3>
+        <div id="features-content"></div>
+      </div>
+      
+      <div class="tab-content" id="pricing-tab">
+        <h3>Pricing Analysis</h3>
+        <div id="pricing-content"></div>
+      </div>
+      
+      <div class="tab-content" id="customers-tab">
+        <h3>Customer Analysis</h3>
+        <div id="customers-content"></div>
+      </div>
+      
+      <div class="tab-content" id="raw-tab">
+        <h3>Raw Analysis Data</h3>
+        <pre id="raw-content"></pre>
+      </div>
+    </div>
+  </div>
+  
+  <div class="card">
+    <h2>Check Analysis Status</h2>
+    <form id="analysisStatusForm">
+      <label for="analysisStatusId">Analysis ID:</label>
+      <input type="text" id="analysisStatusId" name="analysisStatusId" placeholder="Enter task ID" required>
+      <button type="submit">Check Status</button>
+    </form>
+    <div id="analysisStatusResult"></div>
+  </div>
+  
+  <div class="card">
     <h2>List All Reports</h2>
     <button id="listReportsBtn">List Reports</button>
     <div id="reportsListResult"></div>
   </div>
   
   <script>
-    // Replace with your worker URL after deployment
-    // PRODUCTION NOTE: Update this URL to your production Worker domain when deploying
-    // Example: const WORKER_URL = 'https://research-agent.yourdomain.workers.dev';
+    // Replace with your worker URLs after deployment
+    // PRODUCTION NOTE: Update these URLs to your production Worker domains when deploying
     const WORKER_URL = 'http://localhost:8787';
+    const ANALYSIS_WORKER_URL = 'http://localhost:8788';
     
     // Helper function to display results
     function displayResult(elementId, data, isError = false) {
@@ -129,10 +245,12 @@
         const result = await response.json();
         displayResult('scrapeResult', result);
         
-        // Auto-fill the task ID field
+        // Auto-fill the task ID fields
         if (result.jobId) {
           document.getElementById('taskId').value = result.jobId;
           document.getElementById('reportId').value = result.jobId;
+          document.getElementById('analysisId').value = result.jobId;
+          document.getElementById('analysisStatusId').value = result.jobId;
         }
       } catch (error) {
         displayResult('scrapeResult', { error: error.message }, true);
@@ -189,6 +307,317 @@
       }
     });
     
+    // Get detailed analysis form
+    document.getElementById('analysisForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const analysisId = document.getElementById('analysisId').value;
+      
+      try {
+        const response = await fetch(`${ANALYSIS_WORKER_URL}/analysis-report/${analysisId}`);
+        const result = await response.json();
+        
+        // Display the raw result
+        displayResult('analysisResult', result);
+        
+        // If we have a report, display it in a more user-friendly way
+        if (result.report) {
+          document.getElementById('analysisContent').style.display = 'block';
+          
+          // Display raw data
+          document.getElementById('raw-content').textContent = JSON.stringify(result.report, null, 2);
+          
+          // Display features
+          const featuresContent = document.getElementById('features-content');
+          featuresContent.innerHTML = '';
+          
+          if (result.report.features && result.report.features.core_features) {
+            // Core features
+            featuresContent.innerHTML += '<h4>Core Features</h4>';
+            result.report.features.core_features.forEach(feature => {
+              featuresContent.innerHTML += `
+                <div class="feature-card ${feature.highlighted ? 'highlighted' : ''}">
+                  <h4>${feature.name}</h4>
+                  <p>${feature.description}</p>
+                </div>
+              `;
+            });
+            
+            // Advanced features
+            if (result.report.features.advanced_features && result.report.features.advanced_features.length > 0) {
+              featuresContent.innerHTML += '<h4>Advanced Features</h4>';
+              result.report.features.advanced_features.forEach(feature => {
+                featuresContent.innerHTML += `
+                  <div class="feature-card ${feature.highlighted ? 'highlighted' : ''}">
+                    <h4>${feature.name}</h4>
+                    <p>${feature.description}</p>
+                  </div>
+                `;
+              });
+            }
+            
+            // Integrations
+            if (result.report.features.integrations && result.report.features.integrations.length > 0) {
+              featuresContent.innerHTML += '<h4>Integrations</h4>';
+              result.report.features.integrations.forEach(integration => {
+                featuresContent.innerHTML += `
+                  <div class="feature-card">
+                    <h4>${integration.name}</h4>
+                    <p>${integration.description}</p>
+                  </div>
+                `;
+              });
+            }
+            
+            // Unique selling points
+            if (result.report.features.unique_selling_points && result.report.features.unique_selling_points.length > 0) {
+              featuresContent.innerHTML += '<h4>Unique Selling Points</h4>';
+              featuresContent.innerHTML += '<ul>';
+              result.report.features.unique_selling_points.forEach(usp => {
+                featuresContent.innerHTML += `<li>${usp}</li>`;
+              });
+              featuresContent.innerHTML += '</ul>';
+            }
+            
+            // Limitations
+            if (result.report.features.limitations && result.report.features.limitations.length > 0) {
+              featuresContent.innerHTML += '<h4>Limitations</h4>';
+              featuresContent.innerHTML += '<ul>';
+              result.report.features.limitations.forEach(limitation => {
+                featuresContent.innerHTML += `<li>${limitation}</li>`;
+              });
+              featuresContent.innerHTML += '</ul>';
+            }
+          } else if (result.report.features && result.report.features.raw) {
+            // Handle raw text response
+            featuresContent.innerHTML = `<p>${result.report.features.raw}</p>`;
+          } else if (result.report.features && result.report.features.error) {
+            // Handle error
+            featuresContent.innerHTML = `<p class="error">Error: ${result.report.features.error}</p>`;
+          } else {
+            featuresContent.innerHTML = '<p>No feature data available</p>';
+          }
+          
+          // Display pricing
+          const pricingContent = document.getElementById('pricing-content');
+          pricingContent.innerHTML = '';
+          
+          if (result.report.pricing && result.report.pricing.pricing_model) {
+            pricingContent.innerHTML += `
+              <p><strong>Pricing Model:</strong> ${result.report.pricing.pricing_model}</p>
+              <p><strong>Currency:</strong> ${result.report.pricing.currency || 'Not specified'}</p>
+            `;
+            
+            // Plans
+            if (result.report.pricing.plans && result.report.pricing.plans.length > 0) {
+              pricingContent.innerHTML += '<h4>Plans</h4>';
+              result.report.pricing.plans.forEach(plan => {
+                pricingContent.innerHTML += `
+                  <div class="pricing-plan">
+                    <h4>${plan.name}</h4>
+                    <p><strong>Price:</strong> ${plan.price}</p>
+                    <p><strong>Billing:</strong> ${plan.billing_cycle}</p>
+                    
+                    <p><strong>Features:</strong></p>
+                    <ul>
+                      ${plan.features.map(feature => `<li>${feature}</li>`).join('')}
+                    </ul>
+                    
+                    ${plan.limitations && plan.limitations.length > 0 ? `
+                      <p><strong>Limitations:</strong></p>
+                      <ul>
+                        ${plan.limitations.map(limitation => `<li>${limitation}</li>`).join('')}
+                      </ul>
+                    ` : ''}
+                  </div>
+                `;
+              });
+            }
+            
+            // Free tier
+            if (result.report.pricing.free_tier) {
+              pricingContent.innerHTML += `
+                <h4>Free Tier</h4>
+                <p><strong>Available:</strong> ${result.report.pricing.free_tier.available ? 'Yes' : 'No'}</p>
+              `;
+              
+              if (result.report.pricing.free_tier.limitations && result.report.pricing.free_tier.limitations.length > 0) {
+                pricingContent.innerHTML += `
+                  <p><strong>Limitations:</strong></p>
+                  <ul>
+                    ${result.report.pricing.free_tier.limitations.map(limitation => `<li>${limitation}</li>`).join('')}
+                  </ul>
+                `;
+              }
+            }
+            
+            // Free trial
+            if (result.report.pricing.free_trial) {
+              pricingContent.innerHTML += `
+                <h4>Free Trial</h4>
+                <p><strong>Available:</strong> ${result.report.pricing.free_trial.available ? 'Yes' : 'No'}</p>
+                ${result.report.pricing.free_trial.duration ? `<p><strong>Duration:</strong> ${result.report.pricing.free_trial.duration}</p>` : ''}
+              `;
+            }
+            
+            // Special offers
+            if (result.report.pricing.special_offers && result.report.pricing.special_offers.length > 0) {
+              pricingContent.innerHTML += `
+                <h4>Special Offers</h4>
+                <ul>
+                  ${result.report.pricing.special_offers.map(offer => `<li>${offer}</li>`).join('')}
+                </ul>
+              `;
+            }
+            
+            // Pricing analysis
+            if (result.report.pricing.pricing_analysis) {
+              pricingContent.innerHTML += `
+                <h4>Pricing Analysis</h4>
+                <p>${result.report.pricing.pricing_analysis}</p>
+              `;
+            }
+          } else if (result.report.pricing && result.report.pricing.raw) {
+            // Handle raw text response
+            pricingContent.innerHTML = `<p>${result.report.pricing.raw}</p>`;
+          } else if (result.report.pricing && result.report.pricing.error) {
+            // Handle error
+            pricingContent.innerHTML = `<p class="error">Error: ${result.report.pricing.error}</p>`;
+          } else {
+            pricingContent.innerHTML = '<p>No pricing data available</p>';
+          }
+          
+          // Display customers
+          const customersContent = document.getElementById('customers-content');
+          customersContent.innerHTML = '';
+          
+          if (result.report.customers && result.report.customers.target_audience) {
+            // Target audience
+            customersContent.innerHTML += `
+              <h4>Target Audience</h4>
+              <p><strong>Primary:</strong> ${result.report.customers.target_audience.primary}</p>
+              ${result.report.customers.target_audience.secondary ? `<p><strong>Secondary:</strong> ${result.report.customers.target_audience.secondary}</p>` : ''}
+            `;
+            
+            if (result.report.customers.target_audience.industries && result.report.customers.target_audience.industries.length > 0) {
+              customersContent.innerHTML += `
+                <p><strong>Industries:</strong></p>
+                <div>
+                  ${result.report.customers.target_audience.industries.map(industry => `<span class="tag">${industry}</span>`).join('')}
+                </div>
+              `;
+            }
+            
+            // User personas
+            if (result.report.customers.user_personas && result.report.customers.user_personas.length > 0) {
+              customersContent.innerHTML += '<h4>User Personas</h4>';
+              result.report.customers.user_personas.forEach(persona => {
+                customersContent.innerHTML += `
+                  <div class="persona-card">
+                    <h4>${persona.name}</h4>
+                    <p><strong>Role:</strong> ${persona.role}</p>
+                    
+                    <p><strong>Pain Points:</strong></p>
+                    <ul>
+                      ${persona.pain_points.map(point => `<li>${point}</li>`).join('')}
+                    </ul>
+                    
+                    <p><strong>Goals:</strong></p>
+                    <ul>
+                      ${persona.goals.map(goal => `<li>${goal}</li>`).join('')}
+                    </ul>
+                    
+                    <p><strong>How Product Helps:</strong> ${persona.how_product_helps}</p>
+                  </div>
+                `;
+              });
+            }
+            
+            // Market positioning
+            if (result.report.customers.market_positioning) {
+              customersContent.innerHTML += `
+                <h4>Market Positioning</h4>
+                <p><strong>Category:</strong> ${result.report.customers.market_positioning.category}</p>
+                
+                <p><strong>Differentiators:</strong></p>
+                <ul>
+                  ${result.report.customers.market_positioning.differentiators.map(diff => `<li>${diff}</li>`).join('')}
+                </ul>
+                
+                <p><strong>Competitors:</strong></p>
+                <div>
+                  ${result.report.customers.market_positioning.competitors.map(comp => `<span class="tag">${comp}</span>`).join('')}
+                </div>
+              `;
+            }
+            
+            // Customer evidence
+            if (result.report.customers.customer_evidence) {
+              customersContent.innerHTML += '<h4>Customer Evidence</h4>';
+              
+              if (result.report.customers.customer_evidence.testimonials && result.report.customers.customer_evidence.testimonials.length > 0) {
+                customersContent.innerHTML += `
+                  <p><strong>Testimonials:</strong></p>
+                  <ul>
+                    ${result.report.customers.customer_evidence.testimonials.map(testimonial => `<li>${testimonial}</li>`).join('')}
+                  </ul>
+                `;
+              }
+              
+              if (result.report.customers.customer_evidence.case_studies && result.report.customers.customer_evidence.case_studies.length > 0) {
+                customersContent.innerHTML += `
+                  <p><strong>Case Studies:</strong></p>
+                  <ul>
+                    ${result.report.customers.customer_evidence.case_studies.map(study => `<li>${study}</li>`).join('')}
+                  </ul>
+                `;
+              }
+              
+              if (result.report.customers.customer_evidence.logos_displayed && result.report.customers.customer_evidence.logos_displayed.length > 0) {
+                customersContent.innerHTML += `
+                  <p><strong>Logos Displayed:</strong></p>
+                  <div>
+                    ${result.report.customers.customer_evidence.logos_displayed.map(logo => `<span class="tag">${logo}</span>`).join('')}
+                  </div>
+                `;
+              }
+            }
+            
+            // Customer analysis
+            if (result.report.customers.customer_analysis) {
+              customersContent.innerHTML += `
+                <h4>Customer Analysis</h4>
+                <p>${result.report.customers.customer_analysis}</p>
+              `;
+            }
+          } else if (result.report.customers && result.report.customers.raw) {
+            // Handle raw text response
+            customersContent.innerHTML = `<p>${result.report.customers.raw}</p>`;
+          } else if (result.report.customers && result.report.customers.error) {
+            // Handle error
+            customersContent.innerHTML = `<p class="error">Error: ${result.report.customers.error}</p>`;
+          } else {
+            customersContent.innerHTML = '<p>No customer data available</p>';
+          }
+        }
+      } catch (error) {
+        displayResult('analysisResult', { error: error.message }, true);
+      }
+    });
+    
+    // Check analysis status form
+    document.getElementById('analysisStatusForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const analysisId = document.getElementById('analysisStatusId').value;
+      
+      try {
+        const response = await fetch(`${ANALYSIS_WORKER_URL}/analysis-status/${analysisId}`);
+        const result = await response.json();
+        displayResult('analysisStatusResult', result);
+      } catch (error) {
+        displayResult('analysisStatusResult', { error: error.message }, true);
+      }
+    });
+    
     // List all reports
     document.getElementById('listReportsBtn').addEventListener('click', async () => {
       try {
@@ -212,7 +641,8 @@
                 <strong>${report.reportId}</strong> (${size}, uploaded ${date})
                 <div>
                   <a href="${WORKER_URL}/report/${report.reportId}" target="_blank">View Report Info</a> | 
-                  <a href="${WORKER_URL}/download/${report.reportId}" target="_blank">Direct Download</a>
+                  <a href="${WORKER_URL}/download/${report.reportId}" target="_blank">Direct Download</a> |
+                  <a href="#" onclick="document.getElementById('analysisId').value='${report.reportId}'; document.getElementById('analysisForm').dispatchEvent(new Event('submit')); return false;">View Analysis</a>
                 </div>
               </li>
             `;
@@ -224,6 +654,19 @@
       } catch (error) {
         displayResult('reportsListResult', { error: error.message }, true);
       }
+    });
+    
+    // Tab switching
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        // Remove active class from all tabs
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        
+        // Add active class to clicked tab
+        tab.classList.add('active');
+        document.getElementById(`${tab.dataset.tab}-tab`).classList.add('active');
+      });
     });
   </script>
 </body>

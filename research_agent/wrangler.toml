@@ -35,7 +35,38 @@ OPENAI_MODEL = "gpt-4"
 # Model pricing per 1K tokens (in USD)
 OPENAI_PROMPT_PRICE = "0.03"
 OPENAI_COMPLETION_PRICE = "0.06"
+# Worker URL for detailed analysis (used for triggering the second worker)
+WORKER_URL = "http://localhost:8788"
 
 # Add OpenAI API key as a secret
 # To set the secret locally: npx wrangler secret put OPENAI_API_KEY
 # For production: Set in Cloudflare Dashboard 
+
+# Detailed Analysis Worker Configuration
+# This is a separate worker that performs detailed analysis
+[env.analysis]
+name = "research-agent-analysis"
+main = "src/workers/detailed-analysis.ts"
+
+# Durable Object binding for analysis task management
+[env.analysis.durable_objects]
+bindings = [
+  { name = "ANALYSIS_TASK_DO", class_name = "AnalysisTaskDO" }
+]
+
+# Durable Object migrations for analysis worker
+[[env.analysis.migrations]]
+tag = "v1"
+new_classes = ["AnalysisTaskDO"]
+
+# R2 bucket binding for storing reports (shared with main worker)
+[[env.analysis.r2_buckets]]
+binding = "RESEARCH_REPORTS"
+bucket_name = "research-reports"
+
+# Environment variables for analysis worker
+[env.analysis.vars]
+# OPENAI_API_KEY = "your-api-key-here" # DO NOT commit actual keys
+OPENAI_MODEL = "gpt-4"
+OPENAI_PROMPT_PRICE = "0.03"
+OPENAI_COMPLETION_PRICE = "0.06" 

@@ -31,12 +31,12 @@ The project is being developed in phases:
    - Call a Durable Object to manage the research task
    - Return a task ID for tracking
 
-2. **Phase 2**: Durable Object for Task Management
+2. **Phase 2**: Durable Object for Task Management ✅
    - Track scraping progress (Pending, In-Progress, Completed)
    - Handle task state storage
    - Assign scraping jobs to Workers
 
-3. **Phase 3**: Web Scraping Worker
+3. **Phase 3**: Web Scraping Worker ✅
    - Fetch HTML of the given URL
    - Extract metadata
    - Handle basic error cases
@@ -49,6 +49,32 @@ The project is being developed in phases:
    - Generate structured reports using AI models via Cloudflare AI Gateway
    - Track API costs & latency
    - Implement caching & request optimization
+
+6. **Phase 6**: Detailed Analysis Worker ✅
+   - Secondary worker for comprehensive market research analysis
+   - Triggered after initial scraping completes
+   - Generates detailed reports on features, pricing, and customer segments
+   - Optimized for product managers doing competitive research
+
+## Architecture
+
+The project uses a two-worker architecture:
+
+1. **Main Worker (research-agent)**
+   - Handles URL submission and basic scraping
+   - Extracts metadata and basic content
+   - Generates initial AI insights
+   - Triggers the detailed analysis worker
+
+2. **Analysis Worker (research-agent-analysis)**
+   - Performs comprehensive analysis of scraped content
+   - Generates detailed reports on:
+     - Product features and capabilities
+     - Pricing models and plans
+     - Target customers and user personas
+   - Stores detailed reports in R2
+
+This architecture allows for efficient resource usage while providing comprehensive analysis capabilities.
 
 ## AI-Powered Report Generation
 

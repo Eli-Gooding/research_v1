@@ -37,6 +37,8 @@ export interface Env {
   OPENAI_COMPLETION_PRICE: string;
   // Static assets
   __STATIC_CONTENT: KVNamespace;
+  // Worker URL for detailed analysis
+  WORKER_URL?: string;
 }
 
 // Helper function to generate a response with CORS headers
@@ -928,6 +930,45 @@ export class ResearchTaskDO {
       
       const scrapingEndTime = Date.now();
       console.log(`[${taskId}] Scraping process completed successfully in ${scrapingEndTime - scrapingStartTime}ms`);
+      
+      // Trigger the batch processing worker for detailed analysis
+      try {
+        await this.addLogEntry('Triggering detailed analysis worker', 'info');
+        
+        // Create a request to the detailed analysis worker
+        const detailedAnalysisRequest = new Request(`http://${new URL(this.env.WORKER_URL || 'http://localhost:8788').host}/analyze`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            taskId,
+            targetUrl
+          })
+        });
+        
+        // Send the request to trigger the detailed analysis
+        const response = await fetch(detailedAnalysisRequest);
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`[${taskId}] Error triggering detailed analysis:`, errorText);
+          await this.addLogEntry(`Error triggering detailed analysis: ${errorText}`, 'warning');
+        } else {
+          const result = await response.json();
+          console.log(`[${taskId}] Detailed analysis triggered successfully:`, result);
+          await this.addLogEntry('Detailed analysis triggered successfully', 'info');
+          
+          // Update the task status to indicate detailed analysis is in progress
+          await this.state.storage.put('detailedAnalysisStatus', 'in-progress');
+          await this.state.storage.put('detailedAnalysisTriggeredAt', new Date().toISOString());
+        }
+      } catch (error) {
+        console.error(`[${taskId}] Error triggering detailed analysis:`, error);
+        await this.addLogEntry(`Error triggering detailed analysis: ${error instanceof Error ? error.message : String(error)}`, 'warning');
+        // Continue with the current process even if detailed analysis fails to trigger
+      }
+      
     } catch (error) {
       console.error('Error in scraping process:', error);
       
