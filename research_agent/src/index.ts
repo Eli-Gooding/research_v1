@@ -513,6 +513,8 @@ export class ResearchTaskDO {
       const targetUrl = await this.state.storage.get('targetUrl') as string;
       const taskId = await this.state.storage.get('taskId') as string;
       
+      console.log(`[${taskId}] Starting scraping process for URL: ${targetUrl}`);
+      
       if (!targetUrl) {
         throw new Error('Target URL not found in storage');
       }
@@ -521,34 +523,65 @@ export class ResearchTaskDO {
       await this.state.storage.put('progress', 10);
       await this.addLogEntry('Fetching target URL', 'info');
       
-      // Fetch the target URL
-      const response = await fetch(targetUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.5'
-        }
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch URL: ${response.status} ${response.statusText}`);
-      }
+      // Fetch the target URL with improved error handling
+      console.log(`[${taskId}] Fetching URL with retry logic`);
+      const response = await this.fetchWithRetry(targetUrl);
+      console.log(`[${taskId}] URL fetched successfully`);
       
       // Update progress
       await this.state.storage.put('progress', 30);
       await this.addLogEntry('URL fetched successfully, processing content', 'info');
       
-      // Get the response text
-      const html = await response.text();
+      // Get the content type to determine how to process the response
+      const contentType = response.headers.get('content-type') || '';
+      console.log(`[${taskId}] Content type: ${contentType}`);
       
-      // Extract basic metadata
-      const title = this.extractTitle(html);
-      const description = this.extractMetaDescription(html);
-      const links = this.extractLinks(html, targetUrl);
+      // Initialize the extracted data object
+      const extractedData: any = {
+        title: '',
+        description: '',
+        keywords: '',
+        author: '',
+        ogTags: {},
+        twitterTags: {},
+        headings: {
+          h1: [],
+          h2: [],
+          h3: []
+        },
+        links: [],
+        images: []
+      };
+      
+      // Process HTML content
+      if (contentType.includes('text/html')) {
+        console.log(`[${taskId}] Processing HTML content with HTMLRewriter`);
+        // Use HTMLRewriter to parse the HTML
+        await this.parseHtmlWithRewriter(response.clone(), extractedData, targetUrl);
+        console.log(`[${taskId}] HTMLRewriter processing complete`);
+        console.log(`[${taskId}] Extracted title: "${extractedData.title}"`);
+        console.log(`[${taskId}] Extracted description: "${extractedData.description}"`);
+        console.log(`[${taskId}] Extracted ${extractedData.links.length} links`);
+        console.log(`[${taskId}] Extracted ${extractedData.images.length} images`);
+        console.log(`[${taskId}] Extracted headings: H1=${extractedData.headings.h1.length}, H2=${extractedData.headings.h2.length}, H3=${extractedData.headings.h3.length}`);
+        
+        // Get the raw HTML for storage (limited to avoid excessive storage)
+        const html = await response.text();
+        extractedData.rawHtml = html.substring(0, 10000);
+        console.log(`[${taskId}] Stored ${extractedData.rawHtml.length} characters of raw HTML`);
+      } else {
+        // For non-HTML content, just store basic information
+        console.log(`[${taskId}] Non-HTML content detected, storing basic information`);
+        await this.addLogEntry(`Non-HTML content detected: ${contentType}`, 'info');
+        extractedData.contentType = contentType;
+        extractedData.rawContent = await response.text().then(text => text.substring(0, 10000));
+        console.log(`[${taskId}] Stored ${extractedData.rawContent.length} characters of raw content`);
+      }
       
       // Update progress
       await this.state.storage.put('progress', 60);
       await this.addLogEntry('Content processed, preparing report', 'info');
+      console.log(`[${taskId}] Content processed, preparing report`);
       
       // Create a report object
       const report = {
@@ -556,22 +589,30 @@ export class ResearchTaskDO {
         targetUrl,
         scrapedAt: new Date().toISOString(),
         metadata: {
-          title,
-          description
+          title: extractedData.title,
+          description: extractedData.description,
+          keywords: extractedData.keywords,
+          author: extractedData.author,
+          ogTags: extractedData.ogTags,
+          twitterTags: extractedData.twitterTags
         },
         content: {
-          links: links.slice(0, 50) // Limit to 50 links to avoid excessive storage
+          headings: extractedData.headings,
+          links: extractedData.links.slice(0, 100), // Limit to 100 links
+          images: extractedData.images.slice(0, 50) // Limit to 50 images
         },
-        rawHtml: html.substring(0, 10000) // Store only the first 10KB of HTML to avoid excessive storage
+        rawHtml: extractedData.rawHtml || extractedData.rawContent
       };
       
       // Store the report in R2
+      console.log(`[${taskId}] Storing report in R2`);
       const reportJson = JSON.stringify(report);
       await this.env.RESEARCH_REPORTS.put(`${taskId}.json`, reportJson, {
         httpMetadata: {
           contentType: 'application/json'
         }
       });
+      console.log(`[${taskId}] Report stored successfully, size: ${reportJson.length} bytes`);
       
       // Update progress
       await this.state.storage.put('progress', 100);
@@ -579,7 +620,7 @@ export class ResearchTaskDO {
       await this.state.storage.put('completedAt', new Date().toISOString());
       await this.addLogEntry('Scraping completed successfully', 'info');
       
-      console.log('Scraping process completed successfully');
+      console.log(`[${taskId}] Scraping process completed successfully`);
     } catch (error) {
       console.error('Error in scraping process:', error);
       
@@ -591,20 +632,292 @@ export class ResearchTaskDO {
     }
   }
   
-  // Helper method to extract the title from HTML
+  // Fetch with retry logic to handle temporary failures
+  private async fetchWithRetry(url: string, maxRetries = 3): Promise<Response> {
+    // Array of different user agents to rotate
+    const userAgents = [
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15',
+      'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.107 Safari/537.36',
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:90.0) Gecko/20100101 Firefox/90.0'
+    ];
+    
+    let lastError: Error | null = null;
+    
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        // Use a different user agent for each retry
+        const userAgent = userAgents[attempt % userAgents.length];
+        
+        const response = await fetch(url, {
+          headers: {
+            'User-Agent': userAgent,
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          },
+          redirect: 'follow', // Follow redirects automatically
+          cf: {
+            // Cloudflare-specific options
+            cacheTtl: 0, // Don't cache the response
+            cacheEverything: false
+          }
+        });
+        
+        // Check for redirect
+        if (response.redirected) {
+          await this.addLogEntry(`Redirected to: ${response.url}`, 'info');
+        }
+        
+        // Handle HTTP errors
+        if (!response.ok) {
+          throw new Error(`HTTP error: ${response.status} ${response.statusText}`);
+        }
+        
+        return response;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        await this.addLogEntry(`Fetch attempt ${attempt + 1} failed: ${lastError.message}`, 'warning');
+        
+        // Wait before retrying (exponential backoff)
+        if (attempt < maxRetries - 1) {
+          const delay = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+    }
+    
+    // If we get here, all retries failed
+    throw lastError || new Error('Failed to fetch URL after multiple attempts');
+  }
+  
+  // Parse HTML using HTMLRewriter
+  private async parseHtmlWithRewriter(response: Response, extractedData: any, baseUrl: string): Promise<void> {
+    console.log('Starting HTML parsing with HTMLRewriter');
+    // Create a promise that will be resolved when parsing is complete
+    return new Promise<void>((resolve) => {
+      let parsingComplete = false;
+      
+      // Title handler
+      class TitleHandler {
+        private textContent = '';
+        
+        element(element: Element) {
+          console.log('Found title element');
+        }
+        
+        text(text: Text) {
+          this.textContent += text.text;
+        }
+        
+        getTitle(): string {
+          console.log(`Extracted title: "${this.textContent.trim()}"`);
+          return this.textContent.trim();
+        }
+      }
+      
+      // Meta tag handler
+      class MetaHandler {
+        constructor(private extractedData: any) {}
+        
+        element(element: Element) {
+          const name = element.getAttribute('name')?.toLowerCase();
+          const property = element.getAttribute('property')?.toLowerCase();
+          const content = element.getAttribute('content');
+          
+          if (!content) return;
+          
+          if (name === 'description') {
+            console.log(`Found meta description: "${content}"`);
+            this.extractedData.description = content;
+          } else if (name === 'keywords') {
+            console.log(`Found meta keywords: "${content}"`);
+            this.extractedData.keywords = content;
+          } else if (name === 'author') {
+            console.log(`Found meta author: "${content}"`);
+            this.extractedData.author = content;
+          } else if (property && property.startsWith('og:')) {
+            // Open Graph tags
+            const ogProperty = property.substring(3);
+            console.log(`Found Open Graph tag ${property}: "${content}"`);
+            this.extractedData.ogTags[ogProperty] = content;
+          } else if (property && property.startsWith('twitter:')) {
+            // Twitter card tags
+            const twitterProperty = property.substring(8);
+            console.log(`Found Twitter Card tag ${property}: "${content}"`);
+            this.extractedData.twitterTags[twitterProperty] = content;
+          }
+        }
+      }
+      
+      // Heading handler
+      class HeadingHandler {
+        private textContent = '';
+        
+        constructor(private level: 'h1' | 'h2' | 'h3', private extractedData: any) {}
+        
+        element(element: Element) {
+          console.log(`Found ${this.level} element`);
+        }
+        
+        text(text: Text) {
+          this.textContent += text.text;
+        }
+        
+        onEndTag() {
+          if (this.textContent.trim()) {
+            console.log(`Extracted ${this.level}: "${this.textContent.trim()}"`);
+            this.extractedData.headings[this.level].push(this.textContent.trim());
+            this.textContent = '';
+          }
+        }
+      }
+      
+      // Link handler
+      class LinkHandler {
+        private textContent = '';
+        private href = '';
+        
+        constructor(private extractedData: any, private baseUrl: string) {}
+        
+        element(element: Element) {
+          const href = element.getAttribute('href');
+          if (href) {
+            this.href = href;
+            
+            // Skip empty URLs, javascript: URLs, and anchor links
+            if (!href || href.startsWith('javascript:') || href === '#') {
+              this.href = '';
+              return;
+            }
+            
+            // Resolve relative URLs
+            try {
+              this.href = new URL(href, this.baseUrl).href;
+            } catch (e) {
+              // If URL parsing fails, just use the original URL
+              console.warn('Failed to parse URL:', href);
+            }
+          }
+        }
+        
+        text(text: Text) {
+          this.textContent += text.text;
+        }
+        
+        onEndTag() {
+          if (this.href) {
+            // Only log every 10th link to avoid console spam
+            if (this.extractedData.links.length % 10 === 0) {
+              console.log(`Extracted link #${this.extractedData.links.length}: ${this.href}`);
+            }
+            
+            this.extractedData.links.push({
+              url: this.href,
+              text: this.textContent.trim() || this.href
+            });
+            this.textContent = '';
+            this.href = '';
+          }
+        }
+      }
+      
+      // Image handler
+      class ImageHandler {
+        constructor(private extractedData: any, private baseUrl: string) {}
+        
+        element(element: Element) {
+          const src = element.getAttribute('src');
+          const alt = element.getAttribute('alt') || '';
+          
+          if (src) {
+            let fullSrc = src;
+            
+            // Resolve relative URLs
+            try {
+              fullSrc = new URL(src, this.baseUrl).href;
+            } catch (e) {
+              // If URL parsing fails, just use the original URL
+              console.warn('Failed to parse image URL:', src);
+            }
+            
+            // Only log every 5th image to avoid console spam
+            if (this.extractedData.images.length % 5 === 0) {
+              console.log(`Extracted image #${this.extractedData.images.length}: ${fullSrc}`);
+            }
+            
+            this.extractedData.images.push({
+              url: fullSrc,
+              alt: alt
+            });
+          }
+        }
+      }
+      
+      console.log('Setting up HTMLRewriter handlers');
+      // Create instances of our handlers
+      const titleHandler = new TitleHandler();
+      const h1Handler = new HeadingHandler('h1', extractedData);
+      const h2Handler = new HeadingHandler('h2', extractedData);
+      const h3Handler = new HeadingHandler('h3', extractedData);
+      const linkHandler = new LinkHandler(extractedData, baseUrl);
+      const imageHandler = new ImageHandler(extractedData, baseUrl);
+      
+      console.log('Starting HTMLRewriter transformation');
+      // Use HTMLRewriter to parse the HTML
+      const rewrittenResponse = new HTMLRewriter()
+        .on('title', titleHandler)
+        .on('meta', new MetaHandler(extractedData))
+        .on('h1', h1Handler)
+        .on('h2', h2Handler)
+        .on('h3', h3Handler)
+        .on('a', linkHandler)
+        .on('img', imageHandler)
+        .transform(response);
+      
+      console.log('HTMLRewriter transformation created, processing response');
+      // Process the rewritten response
+      rewrittenResponse.text()
+        .then(() => {
+          console.log('HTMLRewriter processing complete');
+          // Set the title from the title handler
+          extractedData.title = titleHandler.getTitle();
+          
+          // Mark parsing as complete
+          parsingComplete = true;
+          resolve();
+        })
+        .catch((error: Error) => {
+          console.error('Error parsing HTML with HTMLRewriter:', error);
+          parsingComplete = true;
+          resolve();
+        });
+      
+      // Set a timeout to resolve the promise if parsing takes too long
+      setTimeout(() => {
+        if (!parsingComplete) {
+          console.warn('HTML parsing timed out');
+          resolve();
+        }
+      }, 10000); // 10 second timeout
+    });
+  }
+  
+  // Helper method to extract the title from HTML (fallback method)
   private extractTitle(html: string): string {
     const titleMatch = html.match(/<title[^>]*>(.*?)<\/title>/i);
     return titleMatch ? titleMatch[1].trim() : 'No title found';
   }
   
-  // Helper method to extract the meta description from HTML
+  // Helper method to extract the meta description from HTML (fallback method)
   private extractMetaDescription(html: string): string {
     const descriptionMatch = html.match(/<meta[^>]*name=["']description["'][^>]*content=["'](.*?)["'][^>]*>/i) ||
                             html.match(/<meta[^>]*content=["'](.*?)["'][^>]*name=["']description["'][^>]*>/i);
     return descriptionMatch ? descriptionMatch[1].trim() : 'No description found';
   }
   
-  // Helper method to extract links from HTML
+  // Helper method to extract links from HTML (fallback method)
   private extractLinks(html: string, baseUrl: string): Array<{ url: string, text: string }> {
     const links: Array<{ url: string, text: string }> = [];
     const linkRegex = /<a[^>]*href=["'](.*?)["'][^>]*>(.*?)<\/a>/gi;
