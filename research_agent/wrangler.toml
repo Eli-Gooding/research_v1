@@ -1,0 +1,27 @@
+name = "research-agent"
+main = "src/index.ts"
+compatibility_date = "2024-03-10"
+
+# Serve static assets from the public directory
+[site]
+bucket = "./public"
+
+# Durable Object binding for task management
+[durable_objects]
+bindings = [
+  { name = "RESEARCH_TASK_DO", class_name = "ResearchTaskDO" }
+]
+
+# Durable Object migrations
+[[migrations]]
+tag = "v1"
+new_classes = ["ResearchTaskDO"]
+
+# R2 bucket binding for storing reports
+[[r2_buckets]]
+binding = "RESEARCH_REPORTS"
+bucket_name = "research-reports"
+
+# AI Gateway binding for report generation
+[ai]
+binding = "AI_GATEWAY" 

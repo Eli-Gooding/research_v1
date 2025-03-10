@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Research Agent Tester</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      line-height: 1.6;
+    }
+    h1 {
+      color: #333;
+      border-bottom: 1px solid #eee;
+      padding-bottom: 10px;
+    }
+    .card {
+      background: #f9f9f9;
+      border-radius: 5px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+    input[type="text"] {
+      width: 100%;
+      padding: 8px;
+      margin-bottom: 15px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    button {
+      background: #4285f4;
+      color: white;
+      border: none;
+      padding: 10px 15px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    button:hover {
+      background: #3367d6;
+    }
+    pre {
+      background: #f1f1f1;
+      padding: 10px;
+      border-radius: 4px;
+      overflow-x: auto;
+    }
+    .error {
+      color: #d32f2f;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <h1>Research Agent Tester</h1>
+  
+  <div class="card">
+    <h2>Submit URL for Scraping</h2>
+    <form id="scrapeForm">
+      <label for="targetUrl">Target URL:</label>
+      <input type="text" id="targetUrl" name="targetUrl" placeholder="https://example.com" required>
+      <button type="submit">Submit</button>
+    </form>
+    <div id="scrapeResult"></div>
+  </div>
+  
+  <div class="card">
+    <h2>Check Task Status</h2>
+    <form id="statusForm">
+      <label for="taskId">Task ID:</label>
+      <input type="text" id="taskId" name="taskId" placeholder="Enter task ID" required>
+      <button type="submit">Check Status</button>
+    </form>
+    <div id="statusResult"></div>
+  </div>
+  
+  <div class="card">
+    <h2>Get Report</h2>
+    <form id="reportForm">
+      <label for="reportId">Report ID:</label>
+      <input type="text" id="reportId" name="reportId" placeholder="Enter report ID" required>
+      <button type="submit">Get Report</button>
+    </form>
+    <div id="reportResult"></div>
+  </div>
+  
+  <script>
+    // Replace with your worker URL after deployment
+    const WORKER_URL = 'http://localhost:8787';
+    
+    // Helper function to display results
+    function displayResult(elementId, data, isError = false) {
+      const element = document.getElementById(elementId);
+      element.innerHTML = `<pre class="${isError ? 'error' : ''}">${JSON.stringify(data, null, 2)}</pre>`;
+    }
+    
+    // Submit URL form
+    document.getElementById('scrapeForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const targetUrl = document.getElementById('targetUrl').value;
+      
+      try {
+        const response = await fetch(`${WORKER_URL}/scrape`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ targetUrl })
+        });
+        
+        const result = await response.json();
+        displayResult('scrapeResult', result);
+        
+        // Auto-fill the task ID field
+        if (result.jobId) {
+          document.getElementById('taskId').value = result.jobId;
+          document.getElementById('reportId').value = result.jobId;
+        }
+      } catch (error) {
+        displayResult('scrapeResult', { error: error.message }, true);
+      }
+    });
+    
+    // Check status form
+    document.getElementById('statusForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const taskId = document.getElementById('taskId').value;
+      
+      try {
+        const response = await fetch(`${WORKER_URL}/task/${taskId}`);
+        const result = await response.json();
+        displayResult('statusResult', result);
+      } catch (error) {
+        displayResult('statusResult', { error: error.message }, true);
+      }
+    });
+    
+    // Get report form
+    document.getElementById('reportForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const reportId = document.getElementById('reportId').value;
+      
+      try {
+        const response = await fetch(`${WORKER_URL}/report/${reportId}`);
+        const result = await response.json();
+        displayResult('reportResult', result);
+        
+        // If we have a report URL, add a link to it
+        if (result.reportUrl) {
+          const linkElement = document.createElement('p');
+          linkElement.innerHTML = `<a href="${result.reportUrl}" target="_blank">Open Report</a>`;
+          document.getElementById('reportResult').appendChild(linkElement);
+        }
+      } catch (error) {
+        displayResult('reportResult', { error: error.message }, true);
+      }
+    });
+  </script>
+</body>
+</html> 
