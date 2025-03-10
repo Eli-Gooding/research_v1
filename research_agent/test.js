@@ -78,11 +78,11 @@ async function getReport(jobId) {
     const report = await reportResponse.json();
     console.log('Report content:', JSON.stringify(report, null, 2));
     
-    // Check if AI insights are present
+    // Check if AI insights are present (for backward compatibility)
     if (report.aiInsights) {
       console.log('AI Insights:', JSON.stringify(report.aiInsights, null, 2));
     } else {
-      console.log('No AI insights found in the report');
+      console.log('No AI insights in the report (using analysis worker instead)');
     }
     
     return report;
@@ -109,11 +109,11 @@ async function runTest() {
     if (taskStatus.status === 'completed') {
       const report = await getReport(jobId);
       
-      // Verify AI insights
-      if (report.aiInsights && report.aiInsights.insights) {
-        console.log('✅ AI report generation test passed!');
+      // Verify report structure
+      if (report.metadata && report.content) {
+        console.log('✅ Report generation test passed!');
       } else {
-        console.log('❌ AI report generation test failed: No insights found');
+        console.log('❌ Report generation test failed: Invalid report structure');
       }
     } else {
       console.log('❌ Task failed with error:', taskStatus.error);

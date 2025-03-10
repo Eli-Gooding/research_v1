@@ -785,7 +785,7 @@ export class ResearchTaskDO {
       }
       
       // Update progress
-      await this.state.storage.put('progress', 10);
+      await this.state.storage.put('progress', 20);
       await this.addLogEntry('Fetching target URL', 'info');
       
       // Fetch the target URL with improved error handling
@@ -797,7 +797,7 @@ export class ResearchTaskDO {
       console.log(`[${taskId}] URL fetched successfully in ${fetchEndTime - fetchStartTime}ms`);
       
       // Update progress
-      await this.state.storage.put('progress', 30);
+      await this.state.storage.put('progress', 40);
       await this.addLogEntry('URL fetched successfully, processing content', 'info');
       
       // Get the content type to determine how to process the response
@@ -851,20 +851,8 @@ export class ResearchTaskDO {
       console.log(`[${taskId}] Content parsing completed in ${parsingEndTime - parsingStartTime}ms`);
       
       // Update progress
-      await this.state.storage.put('progress', 60);
-      await this.addLogEntry('Content processed, generating AI insights', 'info');
-      console.log(`[${taskId}] Content processed, generating AI insights`);
-      
-      // Generate AI insights
-      currentStage = 'ai_processing';
-      const aiStartTime = Date.now();
-      const aiInsights = await this.generateAIInsights(extractedData, targetUrl);
-      const aiEndTime = Date.now();
-      console.log(`[${taskId}] AI insights generated successfully in ${aiEndTime - aiStartTime}ms`);
-      
-      // Update progress
-      await this.state.storage.put('progress', 80);
-      await this.addLogEntry('AI insights generated, preparing final report', 'info');
+      await this.state.storage.put('progress', 70);
+      await this.addLogEntry('Content processed, preparing report', 'info');
       
       // Create a report object
       currentStage = 'report_generation';
@@ -886,13 +874,11 @@ export class ResearchTaskDO {
           links: extractedData.links.slice(0, 100), // Limit to 100 links
           images: extractedData.images.slice(0, 50) // Limit to 50 images
         },
-        aiInsights: aiInsights,
         rawHtml: extractedData.rawHtml || extractedData.rawContent,
         performance: {
           total_time_ms: 0, // Will be updated at the end
           fetch_time_ms: fetchEndTime - fetchStartTime,
           parsing_time_ms: parsingEndTime - parsingStartTime,
-          ai_processing_time_ms: aiEndTime - aiStartTime,
           storage_time_ms: 0 // Will be updated after storage
         }
       };
@@ -948,14 +934,14 @@ export class ResearchTaskDO {
         });
         
         // Send the request to trigger the detailed analysis
-        const response = await fetch(detailedAnalysisRequest);
+        const detailedAnalysisResponse = await fetch(detailedAnalysisRequest);
         
-        if (!response.ok) {
-          const errorText = await response.text();
+        if (!detailedAnalysisResponse.ok) {
+          const errorText = await detailedAnalysisResponse.text();
           console.error(`[${taskId}] Error triggering detailed analysis:`, errorText);
           await this.addLogEntry(`Error triggering detailed analysis: ${errorText}`, 'warning');
         } else {
-          const result = await response.json();
+          const result = await detailedAnalysisResponse.json();
           console.log(`[${taskId}] Detailed analysis triggered successfully:`, result);
           await this.addLogEntry('Detailed analysis triggered successfully', 'info');
           
@@ -982,188 +968,6 @@ export class ResearchTaskDO {
       const scrapingEndTime = Date.now();
       console.log(`[${taskId}] Scraping process failed in ${scrapingEndTime - scrapingStartTime}ms at stage '${currentStage}'`);
     }
-  }
-  
-  /**
-   * Generate AI insights from the extracted data using OpenAI via Cloudflare AI Gateway
-   * This method tracks API costs and latency using AI Gateway's built-in observability
-   */
-  private async generateAIInsights(extractedData: any, targetUrl: string): Promise<any> {
-    try {
-      const taskId = await this.state.storage.get('taskId') as string;
-      console.log(`[${taskId}] Generating AI insights for ${targetUrl}`);
-      await this.addLogEntry('Generating AI insights using OpenAI', 'info');
-      
-      // Get model configuration from storage or environment variables
-      const model = (await this.state.storage.get('config_model') as string) || this.env.OPENAI_MODEL || 'gpt-4';
-      const promptPriceStr = (await this.state.storage.get('config_promptPrice') as string) || this.env.OPENAI_PROMPT_PRICE || '0.03';
-      const completionPriceStr = (await this.state.storage.get('config_completionPrice') as string) || this.env.OPENAI_COMPLETION_PRICE || '0.06';
-      
-      // Ensure we're working with strings before parsing to float
-      const promptPrice = parseFloat(String(promptPriceStr));
-      const completionPrice = parseFloat(String(completionPriceStr));
-      
-      console.log(`[${taskId}] Using model: ${model} (Prompt: $${promptPrice}/1K tokens, Completion: $${completionPrice}/1K tokens)`);
-      await this.addLogEntry(`Using OpenAI model: ${model}`, 'info');
-      
-      // Start timing for latency tracking
-      const startTime = Date.now();
-      
-      // Prepare the prompt for OpenAI
-      const prompt = this.prepareAIPrompt(extractedData, targetUrl);
-      
-      // Call OpenAI via Cloudflare AI Gateway
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.env.OPENAI_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: model,
-          messages: [
-            {
-              role: 'system',
-              content: 'You are a competitive research analyst. Your task is to analyze website content and provide structured insights.'
-            },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          temperature: 0.3,
-          max_tokens: 1000
-        })
-      });
-      
-      // Calculate latency
-      const latency = Date.now() - startTime;
-      console.log(`[${taskId}] AI request completed in ${latency}ms`);
-      await this.addLogEntry(`AI request completed in ${latency}ms`, 'info');
-      
-      // Check if the request was successful
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`[${taskId}] Error from OpenAI API:`, errorText);
-        await this.addLogEntry(`Error from OpenAI API: ${errorText}`, 'error');
-        return {
-          error: `Failed to generate AI insights: ${response.status} ${response.statusText}`,
-          raw_error: errorText
-        };
-      }
-      
-      // Parse the response
-      const result = await response.json() as {
-        choices: Array<{
-          message: {
-            content: string;
-          };
-        }>;
-        usage?: {
-          prompt_tokens: number;
-          completion_tokens: number;
-          total_tokens: number;
-        };
-      };
-      
-      const insights = result.choices[0].message.content;
-      
-      // Try to parse the insights as JSON if possible
-      let structuredInsights;
-      try {
-        structuredInsights = JSON.parse(insights);
-      } catch (e) {
-        // If not valid JSON, return as raw text
-        structuredInsights = { raw: insights };
-      }
-      
-      // Calculate estimated cost based on token usage
-      const promptTokens = result.usage?.prompt_tokens || 0;
-      const completionTokens = result.usage?.completion_tokens || 0;
-      const promptCost = (promptTokens / 1000) * promptPrice;
-      const completionCost = (completionTokens / 1000) * completionPrice;
-      const totalCost = promptCost + completionCost;
-      
-      // Store API usage metrics
-      const apiUsage = {
-        model: model,
-        latency,
-        tokens: {
-          prompt: promptTokens,
-          completion: completionTokens,
-          total: result.usage?.total_tokens || 0
-        },
-        cost: {
-          prompt: promptCost.toFixed(6),
-          completion: completionCost.toFixed(6),
-          total: totalCost.toFixed(6),
-          currency: 'USD'
-        },
-        timestamp: new Date().toISOString()
-      };
-      
-      await this.state.storage.put('aiUsage', JSON.stringify(apiUsage));
-      console.log(`[${taskId}] AI usage metrics stored: ${JSON.stringify(apiUsage)}`);
-      await this.addLogEntry(`AI request cost: $${totalCost.toFixed(6)} (${promptTokens} prompt tokens, ${completionTokens} completion tokens)`, 'info');
-      
-      return {
-        insights: structuredInsights,
-        usage: apiUsage
-      };
-    } catch (error) {
-      console.error('Error generating AI insights:', error);
-      await this.addLogEntry(`Error generating AI insights: ${error instanceof Error ? error.message : String(error)}`, 'error');
-      return {
-        error: `Failed to generate AI insights: ${error instanceof Error ? error.message : String(error)}`
-      };
-    }
-  }
-  
-  /**
-   * Prepare a prompt for the AI model based on the extracted data
-   */
-  private prepareAIPrompt(extractedData: any, targetUrl: string): string {
-    // Create a structured prompt for the AI
-    return `
-Analyze the following website content from ${targetUrl}:
-
-TITLE: ${extractedData.title || 'N/A'}
-DESCRIPTION: ${extractedData.description || 'N/A'}
-KEYWORDS: ${extractedData.keywords || 'N/A'}
-
-HEADINGS:
-${extractedData.headings.h1.map((h: string) => `H1: ${h}`).join('\n')}
-${extractedData.headings.h2.slice(0, 10).map((h: string) => `H2: ${h}`).join('\n')}
-${extractedData.headings.h3.slice(0, 10).map((h: string) => `H3: ${h}`).join('\n')}
-
-LINKS (sample):
-${extractedData.links.slice(0, 20).map((link: any) => `- ${link.text || 'N/A'}: ${link.url || 'N/A'}`).join('\n')}
-
-IMAGES (sample):
-${extractedData.images.slice(0, 10).map((img: any) => `- ${img.alt || 'N/A'}: ${img.src || 'N/A'}`).join('\n')}
-
-Based on this content, provide the following analysis in JSON format:
-1. A brief summary of what this website is about (2-3 sentences)
-2. The main topics or themes of the website
-3. The target audience of the website
-4. Key products or services offered (if applicable)
-5. Competitive positioning (how they position themselves in the market)
-6. Content strategy insights (what type of content they focus on)
-7. SEO observations (based on keywords, meta tags, etc.)
-8. Recommendations for competitive analysis
-
-Format your response as valid JSON with the following structure:
-{
-  "summary": "string",
-  "main_topics": ["string", "string"],
-  "target_audience": "string",
-  "products_services": ["string", "string"],
-  "competitive_positioning": "string",
-  "content_strategy": "string",
-  "seo_observations": "string",
-  "recommendations": ["string", "string"]
-}
-`;
   }
   
   // Fetch with retry logic to handle temporary failures
