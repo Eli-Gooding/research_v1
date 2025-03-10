@@ -94,8 +94,16 @@
     <div id="reportResult"></div>
   </div>
   
+  <div class="card">
+    <h2>List All Reports</h2>
+    <button id="listReportsBtn">List Reports</button>
+    <div id="reportsListResult"></div>
+  </div>
+  
   <script>
     // Replace with your worker URL after deployment
+    // PRODUCTION NOTE: Update this URL to your production Worker domain when deploying
+    // Example: const WORKER_URL = 'https://research-agent.yourdomain.workers.dev';
     const WORKER_URL = 'http://localhost:8787';
     
     // Helper function to display results
@@ -161,8 +169,60 @@
           linkElement.innerHTML = `<a href="${result.reportUrl}" target="_blank">Open Report</a>`;
           document.getElementById('reportResult').appendChild(linkElement);
         }
+        
+        // If we have report data directly (local development), display it
+        if (result.reportData) {
+          const reportDataElement = document.createElement('div');
+          reportDataElement.innerHTML = `
+            <h3>Report Data (Local Development)</h3>
+            <pre>${JSON.stringify(result.reportData, null, 2)}</pre>
+          `;
+          document.getElementById('reportResult').appendChild(reportDataElement);
+        }
+        
+        // Always add a direct download link for local development
+        const downloadLinkElement = document.createElement('p');
+        downloadLinkElement.innerHTML = `<a href="${WORKER_URL}/download/${reportId}" target="_blank">Direct Download (Local Development)</a>`;
+        document.getElementById('reportResult').appendChild(downloadLinkElement);
       } catch (error) {
         displayResult('reportResult', { error: error.message }, true);
+      }
+    });
+    
+    // List all reports
+    document.getElementById('listReportsBtn').addEventListener('click', async () => {
+      try {
+        const response = await fetch(`${WORKER_URL}/reports`);
+        const result = await response.json();
+        
+        // Display the raw result
+        displayResult('reportsListResult', result);
+        
+        // If we have reports, create a more user-friendly display
+        if (result.reports && result.reports.length > 0) {
+          const reportsElement = document.createElement('div');
+          reportsElement.innerHTML = '<h3>Available Reports</h3><ul>';
+          
+          result.reports.forEach(report => {
+            const date = new Date(report.uploaded).toLocaleString();
+            const size = (report.size / 1024).toFixed(2) + ' KB';
+            
+            reportsElement.innerHTML += `
+              <li>
+                <strong>${report.reportId}</strong> (${size}, uploaded ${date})
+                <div>
+                  <a href="${WORKER_URL}/report/${report.reportId}" target="_blank">View Report Info</a> | 
+                  <a href="${WORKER_URL}/download/${report.reportId}" target="_blank">Direct Download</a>
+                </div>
+              </li>
+            `;
+          });
+          
+          reportsElement.innerHTML += '</ul>';
+          document.getElementById('reportsListResult').appendChild(reportsElement);
+        }
+      } catch (error) {
+        displayResult('reportsListResult', { error: error.message }, true);
       }
     });
   </script>

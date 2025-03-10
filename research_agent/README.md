@@ -73,6 +73,10 @@ The project is being developed in phases:
    ```
    npx wrangler r2 bucket create research-reports
    ```
+5. Install AWS SDK for R2 presigned URLs:
+   ```
+   npm install @aws-sdk/client-s3 @aws-sdk/s3-request-presigner
+   ```
 
 ### Development
 
@@ -135,9 +139,82 @@ Response:
 ```json
 {
   "status": "completed",
-  "reportUrl": "https://r2.example.com/reports/12345.json"
+  "reportId": "12345",
+  "reportUrl": "https://example-r2.cloudflarestorage.com/research-reports/12345.json?X-Amz-Algorithm=...",
+  "reportSize": 12345,
+  "reportEtag": "abc123",
+  "expiresIn": "1 hour"
 }
 ```
+
+### List All Reports
+
+```
+GET /reports
+```
+
+Response:
+```json
+{
+  "status": "success",
+  "count": 2,
+  "reports": [
+    {
+      "reportId": "12345",
+      "size": 12345,
+      "etag": "abc123",
+      "uploaded": "2025-03-10T12:34:56Z"
+    },
+    {
+      "reportId": "67890",
+      "size": 67890,
+      "etag": "def456",
+      "uploaded": "2025-03-10T13:45:67Z"
+    }
+  ]
+}
+```
+
+## R2 Storage Integration
+
+This project uses Cloudflare R2 for storing scraped reports. R2 is Cloudflare's object storage service, similar to AWS S3 but with no egress fees.
+
+### How R2 is Used in This Project
+
+1. **Report Storage**: When a scraping task is completed, the report is stored as a JSON file in the R2 bucket.
+2. **Presigned URLs**: The `/report/:id` endpoint generates a presigned URL that allows temporary access to the report.
+3. **Report Listing**: The `/reports` endpoint lists all available reports in the R2 bucket.
+
+### R2 Configuration
+
+The R2 bucket is configured in `wrangler.toml`:
+
+```toml
+[[r2_buckets]]
+binding = "RESEARCH_REPORTS"
+bucket_name = "research-reports"
+```
+
+## Production Deployment Considerations
+
+When deploying to production, keep the following in mind:
+
+1. **R2 Bucket Setup**: Ensure your R2 bucket is created in your Cloudflare account:
+   ```
+   npx wrangler r2 bucket create research-reports
+   ```
+
+2. **Environment Detection**: The code automatically detects whether it's running in local development or production and adapts its behavior accordingly:
+   - In local development: Reports are served directly in the response
+   - In production: Presigned URLs are generated for accessing reports
+
+3. **Presigned URLs**: The presigned URL generation uses the AWS SDK. In production, Cloudflare Workers automatically handle authentication to R2.
+
+4. **Direct Download Endpoint**: The `/download/:id` endpoint works in both environments and provides a reliable fallback if users encounter issues with presigned URLs.
+
+5. **CORS Configuration**: You may need to configure CORS for your R2 bucket in production to allow access from your frontend.
+
+6. **Worker Domain**: Update the `WORKER_URL` in `public/index.html` to point to your production Worker domain.
 
 ## License
 

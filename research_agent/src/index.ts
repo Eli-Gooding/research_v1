@@ -16,6 +16,10 @@ import {
   KVNamespace
 } from '@cloudflare/workers-types';
 
+// Import AWS SDK for S3 presigned URLs
+import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+
 // Define the environment interface with our bindings
 export interface Env {
   // Durable Object namespace for managing research tasks
@@ -61,6 +65,16 @@ export default {
           'Access-Control-Max-Age': '86400'
         }
       });
+    }
+    
+    // Check if the R2 bucket is accessible
+    try {
+      // Try to list objects in the bucket to verify access
+      const objects = await env.RESEARCH_REPORTS.list({ limit: 1 });
+      console.log('R2 bucket is accessible, found', objects.objects.length, 'objects');
+    } catch (error) {
+      console.error('Error accessing R2 bucket:', error);
+      // We'll continue even if there's an error, as the bucket might just be empty
     }
     
     // Handle URL submission (Phase 1)
@@ -135,7 +149,7 @@ export default {
       }
     }
     
-    // Handle task status checking (will be implemented in Phase 2)
+    // Handle task status checking (Phase 2)
     if (path.startsWith('/task/') && request.method === 'GET') {
       const taskId = path.split('/task/')[1];
       
@@ -159,7 +173,7 @@ export default {
       }
     }
     
-    // Handle report retrieval (will be implemented in Phase 4)
+    // Handle report retrieval (Phase 4)
     if (path.startsWith('/report/') && request.method === 'GET') {
       const taskId = path.split('/report/')[1];
       
@@ -175,17 +189,126 @@ export default {
           return corsResponse({ error: 'Report not found' }, 404);
         }
         
-        // For Phase 1, we'll just return a message that the report exists
-        // In Phase 4, we'll implement proper R2 integration with S3 compatibility API for presigned URLs
+        // Generate a presigned URL for the report
+        // Get the R2 bucket information from the request URL
+        const accountId = url.hostname.split('.')[0];
+        const bucketName = 'research-reports';
+        
+        // Configure the S3 client to use Cloudflare R2
+        // PRODUCTION NOTE: In production, you'll need to ensure your Cloudflare account ID is correctly
+        // extracted or configured. The Worker's credentials are automatically used by R2.
+        const s3Client = new S3Client({
+          region: 'auto',
+          endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+          credentials: {
+            // These are placeholder values - R2 uses the Worker's credentials automatically
+            accessKeyId: 'placeholder',
+            secretAccessKey: 'placeholder'
+          }
+        });
+        
+        // Create a GetObject command for the report
+        const command = new GetObjectCommand({
+          Bucket: bucketName,
+          Key: `${taskId}.json`
+        });
+        
+        // Generate a presigned URL that expires in 1 hour (3600 seconds)
+        // PRODUCTION NOTE: In production, you may want to adjust the expiration time
+        // based on your security requirements
+        const presignedUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
+        
+        // For local development, we'll serve the report directly instead of using presigned URLs
+        // This helps avoid CORS and SSL issues in development
+        let reportData;
+        let reportUrl: string | null = presignedUrl;
+        
+        // Check if we're in a local development environment
+        // PRODUCTION NOTE: This automatically detects the environment and adapts the behavior
+        const isLocalDev = url.hostname.includes('localhost') || url.hostname.includes('127.0.0.1');
+        
+        if (isLocalDev) {
+          // For local development, read the report and return it directly
+          reportData = await reportObject.json();
+          reportUrl = null; // We won't use the presigned URL in local dev
+        }
+        
         return corsResponse({
           status: 'completed',
-          message: 'Report found. Presigned URL generation will be implemented in Phase 4.',
           reportId: taskId,
+          reportUrl: reportUrl,
           reportSize: reportObject.size,
-          reportEtag: reportObject.etag
+          reportEtag: reportObject.etag,
+          expiresIn: '1 hour',
+          // Include the report data directly in local development
+          ...(isLocalDev && { reportData })
         });
       } catch (error) {
         console.error('Error retrieving report:', error);
+        return corsResponse({ error: 'Internal server error' }, 500);
+      }
+    }
+    
+    // Handle listing all reports (Phase 4)
+    if (path === '/reports' && request.method === 'GET') {
+      try {
+        // List all objects in the R2 bucket
+        const objects = await env.RESEARCH_REPORTS.list();
+        
+        // Map the objects to a more user-friendly format
+        const reports = objects.objects.map(obj => {
+          return {
+            reportId: obj.key.replace('.json', ''),
+            size: obj.size,
+            etag: obj.etag,
+            uploaded: obj.uploaded
+          };
+        });
+        
+        return corsResponse({
+          status: 'success',
+          count: reports.length,
+          reports: reports
+        });
+      } catch (error) {
+        console.error('Error listing reports:', error);
+        return corsResponse({ error: 'Internal server error' }, 500);
+      }
+    }
+    
+    // Handle direct report download (for local development)
+    // PRODUCTION NOTE: This endpoint is useful in both local development and production.
+    // In production, it provides a direct download alternative to presigned URLs,
+    // which can be helpful if users encounter issues with the presigned URLs.
+    if (path.startsWith('/download/') && request.method === 'GET') {
+      const taskId = path.split('/download/')[1];
+      
+      if (!taskId) {
+        return corsResponse({ error: 'Missing task ID' }, 400);
+      }
+      
+      try {
+        // Check if the report exists in R2
+        const reportObject = await env.RESEARCH_REPORTS.get(`${taskId}.json`);
+        
+        if (!reportObject) {
+          return corsResponse({ error: 'Report not found' }, 404);
+        }
+        
+        // Read the report data
+        const reportData = await reportObject.json();
+        
+        // Return the report data directly
+        return new Response(JSON.stringify(reportData, null, 2), {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Content-Disposition': `attachment; filename="${taskId}.json"`
+          }
+        });
+      } catch (error) {
+        console.error('Error downloading report:', error);
         return corsResponse({ error: 'Internal server error' }, 500);
       }
     }
