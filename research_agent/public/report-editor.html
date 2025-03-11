@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Research Report Editor</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+      line-height: 1.6;
+      color: #333;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    
+    h1, h2, h3 {
+      color: #2c3e50;
+    }
+    
+    .container {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    
+    .url-form {
+      background-color: #f8f9fa;
+      padding: 20px;
+      border-radius: 5px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .url-input {
+      width: 70%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 16px;
+    }
+    
+    .submit-button {
+      padding: 10px 20px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    
+    .submit-button:hover {
+      background-color: #0069d9;
+    }
+    
+    .status-container {
+      padding: 15px;
+      background-color: #f8f9fa;
+      border-radius: 5px;
+      margin-bottom: 20px;
+    }
+    
+    .editor-container {
+      display: flex;
+      gap: 20px;
+    }
+    
+    .editor-main {
+      flex: 3;
+    }
+    
+    .editor-sidebar {
+      flex: 1;
+      background-color: #f8f9fa;
+      padding: 15px;
+      border-radius: 5px;
+    }
+    
+    #editor {
+      width: 100%;
+      height: 500px;
+      padding: 15px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+      font-size: 14px;
+      line-height: 1.5;
+      resize: vertical;
+    }
+    
+    .status-bar {
+      margin-top: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px;
+      background-color: #f8f9fa;
+      border-radius: 5px;
+    }
+    
+    .status-indicator {
+      display: flex;
+      align-items: center;
+    }
+    
+    .status-indicator::before {
+      content: '';
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: 8px;
+    }
+    
+    .status-connected::before {
+      background-color: #28a745;
+    }
+    
+    .status-disconnected::before {
+      background-color: #dc3545;
+    }
+    
+    .users-list {
+      margin-top: 20px;
+    }
+    
+    .users-list ul {
+      list-style-type: none;
+      padding: 0;
+    }
+    
+    .users-list li {
+      padding: 8px 0;
+      border-bottom: 1px solid #eee;
+    }
+    
+    .status-active {
+      color: #28a745;
+    }
+    
+    .status-idle {
+      color: #ffc107;
+    }
+    
+    .status-offline {
+      color: #6c757d;
+    }
+    
+    .button {
+      padding: 8px 16px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    
+    .button:hover {
+      background-color: #0069d9;
+    }
+    
+    .hidden {
+      display: none;
+    }
+
+    .api-url-form {
+      margin-bottom: 20px;
+      padding: 15px;
+      background-color: #f8f9fa;
+      border-radius: 5px;
+    }
+
+    .api-url-input {
+      width: 70%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 16px;
+      margin-right: 10px;
+    }
+    
+    .mode-selector {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    
+    .mode-button {
+      flex: 1;
+      padding: 15px;
+      text-align: center;
+      background-color: #f8f9fa;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+    
+    .mode-button:hover {
+      background-color: #e9ecef;
+    }
+    
+    .mode-button.active {
+      background-color: #007bff;
+      color: white;
+      border-color: #007bff;
+    }
+    
+    .mode-button h3 {
+      margin-top: 0;
+      color: inherit;
+    }
+  </style>
+</head>
+<body>
+  <h1>Research Report Editor</h1>
+  
+  <div class="container">
+    <div class="mode-selector">
+      <div id="standalone-mode-button" class="mode-button active">
+        <h3>Standalone Editor</h3>
+        <p>Use the collaborative editor without connecting to the API</p>
+      </div>
+      <div id="api-mode-button" class="mode-button">
+        <h3>API Integration</h3>
+        <p>Generate reports from websites using the Cloudflare Workers API</p>
+      </div>
+    </div>
+    
+    <div id="api-settings" class="api-url-form hidden">
+      <h3>API Configuration</h3>
+      <p>Enter the URL of your Cloudflare Workers API:</p>
+      <input type="url" id="api-url-input" class="api-url-input" placeholder="Enter API URL (e.g., http://localhost:8787)" value="http://localhost:8787">
+      <button id="save-api-url" class="button">Save</button>
+    </div>
+
+    <div id="url-form-container" class="url-form hidden">
+      <h2>Generate a New Report</h2>
+      <form id="scrape-form">
+        <input type="url" id="url-input" class="url-input" placeholder="Enter website URL (e.g., https://example.com)" required>
+        <button type="submit" class="submit-button">Generate Report</button>
+      </form>
+    </div>
+    
+    <div id="status-container" class="status-container hidden">
+      <h3>Report Status</h3>
+      <div id="status-message">Initializing...</div>
+      <div id="progress-bar" style="margin-top: 10px; height: 20px; background-color: #eee; border-radius: 4px; overflow: hidden;">
+        <div id="progress" style="height: 100%; width: 0%; background-color: #007bff; transition: width 0.3s;"></div>
+      </div>
+    </div>
+    
+    <div id="editor-section">
+      <h2>Collaborative Report Editor</h2>
+      <p>This report can be edited by multiple users simultaneously. Changes are saved automatically.</p>
+      
+      <div class="editor-container">
+        <div class="editor-main">
+          <textarea id="editor" placeholder="Report content will appear here..."></textarea>
+          
+          <div class="status-bar">
+            <div class="status-indicator" id="status-indicator">
+              <span id="status">Connecting...</span>
+            </div>
+            
+            <button class="button" id="save-button">Save Report</button>
+          </div>
+        </div>
+        
+        <div class="editor-sidebar">
+          <h3>Connected Users</h3>
+          <div class="users-list" id="users">
+            <div>No other users connected</div>
+          </div>
+          
+          <div style="margin-top: 30px;">
+            <h3>Report Information</h3>
+            <div id="report-info">
+              <p><strong>URL:</strong> <span id="report-url">-</span></p>
+              <p><strong>Generated:</strong> <span id="report-date">-</span></p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <script src="/js/document-editor.js"></script>
+  <script>
+    // Main application logic
+    document.addEventListener('DOMContentLoaded', () => {
+      // DOM elements
+      const standaloneButton = document.getElementById('standalone-mode-button');
+      const apiButton = document.getElementById('api-mode-button');
+      const apiSettings = document.getElementById('api-settings');
+      const urlFormContainer = document.getElementById('url-form-container');
+      const apiUrlInput = document.getElementById('api-url-input');
+      const saveApiUrlButton = document.getElementById('save-api-url');
+      const scrapeForm = document.getElementById('scrape-form');
+      const urlInput = document.getElementById('url-input');
+      const statusContainer = document.getElementById('status-container');
+      const statusMessage = document.getElementById('status-message');
+      const progressBar = document.getElementById('progress');
+      const editorSection = document.getElementById('editor-section');
+      const reportUrl = document.getElementById('report-url');
+      const reportDate = document.getElementById('report-date');
+      const saveButton = document.getElementById('save-button');
+      
+      let currentTaskId = null;
+      let statusCheckInterval = null;
+      let apiBaseUrl = localStorage.getItem('apiBaseUrl') || 'http://localhost:8787';
+      
+      // Initialize API URL input
+      apiUrlInput.value = apiBaseUrl;
+      
+      // Mode selection
+      standaloneButton.addEventListener('click', () => {
+        standaloneButton.classList.add('active');
+        apiButton.classList.remove('active');
+        apiSettings.classList.add('hidden');
+        urlFormContainer.classList.add('hidden');
+        statusContainer.classList.add('hidden');
+        
+        // Initialize standalone mode
+        initStandaloneMode();
+      });
+      
+      apiButton.addEventListener('click', () => {
+        apiButton.classList.add('active');
+        standaloneButton.classList.remove('active');
+        apiSettings.classList.remove('hidden');
+        urlFormContainer.classList.remove('hidden');
+      });
+      
+      // Initialize in standalone mode by default
+      initStandaloneMode();
+      
+      // Save API URL
+      saveApiUrlButton.addEventListener('click', () => {
+        apiBaseUrl = apiUrlInput.value.trim();
+        if (apiBaseUrl) {
+          localStorage.setItem('apiBaseUrl', apiBaseUrl);
+          alert('API URL saved successfully!');
+        }
+      });
+      
+      // Initialize standalone mode
+      function initStandaloneMode() {
+        // Update report info
+        reportUrl.textContent = 'Standalone Mode';
+        reportDate.textContent = new Date().toLocaleString();
+        
+        // Set default content
+        const defaultContent = `# Collaborative Document Editor
+
+This is a standalone collaborative editor powered by PartyKit. You can edit this document and collaborate with others in real-time.
+
+## How to use
+
+1. Edit this document
+2. Share the URL with others
+3. See changes in real-time
+
+## Features
+
+- Real-time collaboration
+- Multiple users can edit simultaneously
+- Changes are saved automatically
+- No account required
+
+## Tips
+
+- You can use Markdown formatting in this editor
+- Use # for headings, * for bullet points, etc.
+- The editor will automatically save your changes
+
+`;
+        
+        // Set the editor content directly first
+        document.getElementById('editor').value = defaultContent;
+        
+        // Then try to initialize the collaborative editor
+        try {
+          if (window.documentEditor) {
+            window.documentEditor.setContent(defaultContent);
+          } else {
+            // If the document editor isn't initialized yet, try to initialize it
+            setTimeout(() => {
+              if (window.documentEditor) {
+                window.documentEditor.setContent(defaultContent);
+              }
+            }, 1000);
+          }
+          
+          // Try to save to collaborative document
+          try {
+            fetch('/party/document', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({ content: defaultContent })
+            })
+            .then(response => {
+              if (response.ok) {
+                console.log('Document saved successfully');
+                document.getElementById('status').textContent = 'Connected';
+                document.getElementById('status-indicator').classList.add('status-connected');
+              } else {
+                console.warn('Failed to save document');
+                document.getElementById('status').textContent = 'Error saving document';
+                document.getElementById('status-indicator').classList.add('status-disconnected');
+              }
+            })
+            .catch(error => {
+              console.warn('Error saving to collaborative document, but editor is still usable:', error);
+              document.getElementById('status').textContent = 'Disconnected';
+              document.getElementById('status-indicator').classList.add('status-disconnected');
+            });
+          } catch (error) {
+            console.warn('Error saving to collaborative document, but editor is still usable:', error);
+            document.getElementById('status').textContent = 'Disconnected';
+            document.getElementById('status-indicator').classList.add('status-disconnected');
+          }
+        } catch (error) {
+          console.warn('Error initializing collaborative editor, but basic editor is still usable:', error);
+          document.getElementById('status').textContent = 'Disconnected';
+          document.getElementById('status-indicator').classList.add('status-disconnected');
+        }
+      }
+      
+      // Handle form submission
+      scrapeForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const url = urlInput.value.trim();
+        if (!url) return;
+        
+        try {
+          // Show status container
+          statusContainer.classList.remove('hidden');
+          statusMessage.textContent = 'Starting scraping process...';
+          progressBar.style.width = '10%';
+          
+          // Log the request for debugging
+          console.log(`Sending request to: /party/document/api?apiBaseUrl=${encodeURIComponent(apiBaseUrl)}`);
+          console.log(`Request body: ${JSON.stringify({ action: 'scrape', url: url, targetUrl: url, timestamp: Date.now() })}`);
+          
+          // Submit URL for scraping through the proxy
+          const response = await fetch(`/party/document/api?apiBaseUrl=${encodeURIComponent(apiBaseUrl)}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ action: 'scrape', url: url, targetUrl: url, timestamp: Date.now() })
+          });
+          
+          // Log the response for debugging
+          console.log(`Response status: ${response.status}`);
+          const responseText = await response.text();
+          console.log(`Response text: ${responseText}`);
+          
+          // Try to parse the response as JSON
+          let data;
+          try {
+            data = JSON.parse(responseText);
+          } catch (parseError) {
+            console.error('Error parsing response as JSON:', parseError);
+            statusMessage.textContent = `Error: Failed to parse response as JSON. Raw response: ${responseText.substring(0, 100)}${responseText.length > 100 ? '...' : ''}`;
+            return;
+          }
+          
+          if (data.status === 'success' || data.status === 'queued') {
+            // Use jobId if available, otherwise use taskId
+            currentTaskId = data.jobId || data.taskId;
+            statusMessage.textContent = 'Scraping in progress...';
+            progressBar.style.width = '30%';
+            
+            console.log(`Task ID received: ${currentTaskId}`);
+            
+            // Start checking status
+            startStatusChecking(currentTaskId);
+          } else {
+            statusMessage.textContent = `Error: ${data.error || 'Failed to start scraping process'}`;
+          }
+        } catch (error) {
+          console.error('Error submitting URL:', error);
+          statusMessage.textContent = `Error: Failed to communicate with the server. ${error.message || ''}. Make sure the API URL is correct.`;
+        }
+      });
+      
+      // Function to check task status
+      function startStatusChecking(taskId) {
+        // Clear any existing interval
+        if (statusCheckInterval) {
+          clearInterval(statusCheckInterval);
+        }
+        
+        statusCheckInterval = setInterval(async () => {
+          try {
+            // Updated URL format to match the worker's expected format
+            console.log(`Checking task status: /party/document/api?apiBaseUrl=${encodeURIComponent(apiBaseUrl)}&action=task-status&taskId=${taskId}`);
+            
+            const response = await fetch(`/party/document/api?apiBaseUrl=${encodeURIComponent(apiBaseUrl)}&action=task-status&taskId=${taskId}`);
+            
+            console.log(`Task status response: ${response.status}`);
+            const responseText = await response.text();
+            console.log(`Task status response text: ${responseText.substring(0, 100)}${responseText.length > 100 ? '...' : ''}`);
+            
+            // Try to parse the response as JSON
+            let taskData;
+            try {
+              taskData = JSON.parse(responseText);
+            } catch (parseError) {
+              console.error('Error parsing task status response as JSON:', parseError);
+              statusMessage.textContent = `Error: Failed to parse task status response as JSON. Raw response: ${responseText.substring(0, 100)}${responseText.length > 100 ? '...' : ''}`;
+              return;
+            }
+            
+            // Update progress based on status
+            if (taskData.status === 'completed' || taskData.status === 'success') {
+              // Task completed, stop checking
+              clearInterval(statusCheckInterval);
+              statusMessage.textContent = 'Report generated successfully!';
+              progressBar.style.width = '100%';
+              
+              // Load the report
+              loadReport(taskId);
+            } else if (taskData.status === 'error' || taskData.status === 'failed') {
+              // Task failed
+              clearInterval(statusCheckInterval);
+              statusMessage.textContent = `Error: ${taskData.error || taskData.message || 'Unknown error occurred'}`;
+              progressBar.style.width = '100%';
+            } else if (taskData.status === 'processing' || taskData.status === 'analyzing') {
+              // Task in progress with more specific status
+              const progress = taskData.progress || 60;
+              statusMessage.textContent = `Status: ${taskData.status} - ${taskData.message || 'Processing...'}`;
+              progressBar.style.width = `${progress}%`;
+            } else {
+              // Task still in progress with generic status
+              statusMessage.textContent = `Status: ${taskData.status || 'In progress'}`;
+              progressBar.style.width = '60%';
+            }
+          } catch (error) {
+            console.error('Error checking task status:', error);
+            statusMessage.textContent = `Error checking task status: ${error.message || 'Unknown error'}`;
+          }
+        }, 2000); // Check every 2 seconds
+      }
+      
+      // Function to load the report
+      async function loadReport(taskId) {
+        try {
+          // Updated URL format to match the worker's expected format
+          console.log(`Loading report: /party/document/api?apiBaseUrl=${encodeURIComponent(apiBaseUrl)}&action=report&reportId=${taskId}`);
+          
+          const response = await fetch(`/party/document/api?apiBaseUrl=${encodeURIComponent(apiBaseUrl)}&action=report&reportId=${taskId}`);
+          
+          console.log(`Report response: ${response.status}`);
+          const responseText = await response.text();
+          console.log(`Report response text: ${responseText.substring(0, 100)}${responseText.length > 100 ? '...' : ''}`);
+          
+          // Try to parse the response as JSON
+          let reportData;
+          try {
+            reportData = JSON.parse(responseText);
+          } catch (parseError) {
+            console.error('Error parsing report response as JSON:', parseError);
+            statusMessage.textContent = `Error: Failed to parse report response as JSON. Raw response: ${responseText.substring(0, 100)}${responseText.length > 100 ? '...' : ''}`;
+            
+            // Show editor section with error message
+            document.getElementById('editor').value = `# Error Loading Report\n\nThere was an error parsing the report data as JSON.\n\nRaw response: ${responseText.substring(0, 500)}${responseText.length > 500 ? '...' : ''}`;
+            
+            return;
+          }
+          
+          // Update report info
+          reportUrl.textContent = reportData.url || '-';
+          reportDate.textContent = new Date(reportData.timestamp).toLocaleString() || '-';
+          
+          // Format report content for the editor
+          let reportContent = '';
+          
+          if (reportData.title) {
+            reportContent += `# ${reportData.title}\n\n`;
+          }
+          
+          if (reportData.description) {
+            reportContent += `${reportData.description}\n\n`;
+          }
+          
+          reportContent += `## Website Analysis Report\n\n`;
+          reportContent += `URL: ${reportData.url}\n`;
+          reportContent += `Analyzed: ${new Date(reportData.timestamp).toLocaleString()}\n\n`;
+          
+          if (reportData.metadata) {
+            reportContent += `## Metadata\n\n`;
+            
+            if (reportData.metadata.title) {
+              reportContent += `Title: ${reportData.metadata.title}\n`;
+            }
+            
+            if (reportData.metadata.description) {
+              reportContent += `Description: ${reportData.metadata.description}\n`;
+            }
+            
+            if (reportData.metadata.keywords) {
+              reportContent += `Keywords: ${reportData.metadata.keywords}\n`;
+            }
+            
+            reportContent += `\n`;
+          }
+          
+          // Add any analysis data if available
+          if (reportData.analysis) {
+            reportContent += `## Analysis\n\n`;
+            
+            if (reportData.analysis.features) {
+              reportContent += `### Features\n\n${reportData.analysis.features}\n\n`;
+            }
+            
+            if (reportData.analysis.pricing) {
+              reportContent += `### Pricing\n\n${reportData.analysis.pricing}\n\n`;
+            }
+            
+            if (reportData.analysis.customers) {
+              reportContent += `### Target Customers\n\n${reportData.analysis.customers}\n\n`;
+            }
+          }
+          
+          // Set the editor content directly first
+          document.getElementById('editor').value = reportContent;
+          
+          // Then try to save to collaborative document
+          try {
+            saveReportToCollaborativeDoc(reportContent);
+          } catch (error) {
+            console.warn('Failed to save to collaborative document, but report is still viewable:', error);
+          }
+          
+        } catch (error) {
+          console.error('Error loading report:', error);
+          statusMessage.textContent = 'Error: Failed to load report. Please check the API URL and try again.';
+          
+          // Show editor section with error message
+          document.getElementById('editor').value = `# Error Loading Report\n\nThere was an error loading the report.\n\nError: ${error.message || 'Unknown error'}`;
+        }
+      }
+      
+      // Function to save report to collaborative document
+      async function saveReportToCollaborativeDoc(content) {
+        try {
+          // Set the editor content directly
+          if (window.documentEditor) {
+            window.documentEditor.setContent(content);
+          } else {
+            document.getElementById('editor').value = content;
+          }
+          
+          // Try to save to collaborative document
+          try {
+            const originalText = saveButton.textContent;
+            saveButton.textContent = 'Saving...';
+            saveButton.disabled = true;
+            
+            const response = await fetch('/party/document', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({ content })
+            });
+            
+            if (response.ok) {
+              console.log('Report saved to collaborative document');
+              saveButton.textContent = 'Saved!';
+              document.getElementById('status').textContent = 'Connected';
+              document.getElementById('status-indicator').classList.add('status-connected');
+              document.getElementById('status-indicator').classList.remove('status-disconnected');
+              
+              // Reset button after 2 seconds
+              setTimeout(() => {
+                saveButton.textContent = originalText;
+                saveButton.disabled = false;
+              }, 2000);
+            } else {
+              console.warn('Failed to save to collaborative document, but editor is still usable');
+              saveButton.textContent = 'Save Failed';
+              document.getElementById('status').textContent = 'Error saving document';
+              document.getElementById('status-indicator').classList.add('status-disconnected');
+              document.getElementById('status-indicator').classList.remove('status-connected');
+              
+              // Reset button after 2 seconds
+              setTimeout(() => {
+                saveButton.textContent = originalText;
+                saveButton.disabled = false;
+              }, 2000);
+            }
+          } catch (error) {
+            console.warn('Error saving to collaborative document, but editor is still usable:', error);
+            document.getElementById('save-button').textContent = 'Save Failed';
+            document.getElementById('status').textContent = 'Disconnected';
+            document.getElementById('status-indicator').classList.add('status-disconnected');
+            document.getElementById('status-indicator').classList.remove('status-connected');
+            
+            // Reset button after 2 seconds
+            setTimeout(() => {
+              document.getElementById('save-button').textContent = 'Save Report';
+              document.getElementById('save-button').disabled = false;
+            }, 2000);
+          }
+        } catch (error) {
+          console.error('Error setting up editor:', error);
+          statusMessage.textContent = 'Error: Failed to set up editor, but you can still view the report';
+        }
+      }
+      
+      // Handle save button click
+      saveButton.addEventListener('click', () => {
+        let content;
+        if (window.documentEditor) {
+          content = window.documentEditor.getContent();
+        } else {
+          content = document.getElementById('editor').value;
+        }
+        
+        saveReportToCollaborativeDoc(content);
+      });
+    });
+  </script>
+</body>
+</html>

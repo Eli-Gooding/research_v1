@@ -1,0 +1,11 @@
+{
+  "name": "research-agent",
+  "main": "src/party/document.ts",
+  "parties": {
+    "document": "src/party/document.ts"
+  },
+  "serve": {
+    "path": "public"
+  },
+  "compatibilityDate": "2024-09-23"
+} 

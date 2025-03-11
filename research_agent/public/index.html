@@ -3,78 +3,123 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Research Agent Tester</title>
+  <title>Research Agent - PartyKit Edition</title>
   <style>
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-      max-width: 800px;
+      line-height: 1.6;
+      color: #333;
+      max-width: 1200px;
       margin: 0 auto;
       padding: 20px;
-      line-height: 1.6;
     }
-    h1 {
-      color: #333;
-      border-bottom: 1px solid #eee;
-      padding-bottom: 10px;
+    h1, h2, h3 {
+      color: #2c3e50;
+    }
+    .container {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
     }
     .card {
-      background: #f9f9f9;
-      border-radius: 5px;
+      background-color: #fff;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
       padding: 20px;
       margin-bottom: 20px;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .form-group {
+      margin-bottom: 15px;
     }
     label {
       display: block;
       margin-bottom: 5px;
-      font-weight: bold;
+      font-weight: 600;
     }
-    input[type="text"] {
+    input[type="text"], input[type="url"] {
       width: 100%;
-      padding: 8px;
-      margin-bottom: 15px;
+      padding: 10px;
       border: 1px solid #ddd;
       border-radius: 4px;
-      box-sizing: border-box;
+      font-size: 16px;
     }
     button {
-      background: #4285f4;
+      background-color: #3498db;
       color: white;
       border: none;
       padding: 10px 15px;
       border-radius: 4px;
       cursor: pointer;
-      font-size: 14px;
+      font-size: 16px;
+      transition: background-color 0.3s;
     }
     button:hover {
-      background: #3367d6;
+      background-color: #2980b9;
     }
-    pre {
-      background: #f1f1f1;
+    button:disabled {
+      background-color: #95a5a6;
+      cursor: not-allowed;
+    }
+    .status {
       padding: 10px;
       border-radius: 4px;
-      overflow-x: auto;
+      margin-top: 10px;
     }
-    .error {
-      color: #d32f2f;
-      font-weight: bold;
+    .status.success {
+      background-color: #d5f5e3;
+      color: #27ae60;
+    }
+    .status.error {
+      background-color: #f8d7da;
+      color: #c0392b;
+    }
+    .status.info {
+      background-color: #d6eaf8;
+      color: #2980b9;
+    }
+    .status.warning {
+      background-color: #fef9e7;
+      color: #f39c12;
+    }
+    .logs {
+      max-height: 300px;
+      overflow-y: auto;
+      background-color: #f9f9f9;
+      padding: 10px;
+      border-radius: 4px;
+      font-family: monospace;
+      margin-top: 10px;
+    }
+    .log-entry {
+      margin-bottom: 5px;
+      padding: 5px;
+      border-radius: 3px;
+    }
+    .log-entry.info {
+      background-color: #d6eaf8;
+    }
+    .log-entry.warning {
+      background-color: #fef9e7;
+    }
+    .log-entry.error {
+      background-color: #f8d7da;
+    }
+    .hidden {
+      display: none;
     }
     .tabs {
       display: flex;
-      margin-bottom: 10px;
+      margin-bottom: 20px;
       border-bottom: 1px solid #ddd;
     }
     .tab {
-      padding: 8px 16px;
+      padding: 10px 15px;
       cursor: pointer;
-      border: 1px solid transparent;
-      border-bottom: none;
-      margin-right: 5px;
-      border-radius: 4px 4px 0 0;
+      border-bottom: 2px solid transparent;
     }
     .tab.active {
-      background: #f1f1f1;
-      border-color: #ddd;
+      border-bottom: 2px solid #3498db;
+      font-weight: 600;
     }
     .tab-content {
       display: none;
@@ -82,823 +127,393 @@
     .tab-content.active {
       display: block;
     }
-    .feature-card {
-      background: white;
-      border: 1px solid #eee;
-      border-radius: 5px;
+    pre {
+      background-color: #f8f8f8;
       padding: 15px;
-      margin-bottom: 15px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-    }
-    .feature-card h4 {
-      margin-top: 0;
-      color: #4285f4;
-    }
-    .feature-category {
-      margin-bottom: 20px;
-    }
-    .feature-category h5 {
-      color: #333;
-      margin-bottom: 5px;
-    }
-    .benefits, .technical-details {
-      margin-top: 10px;
-      padding-left: 10px;
-      border-left: 3px solid #f0f0f0;
-    }
-    .benefits h5, .technical-details h5 {
-      margin-top: 0;
-      margin-bottom: 5px;
-      color: #666;
-      font-size: 14px;
-    }
-    .usp-container {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 15px;
-      margin-bottom: 20px;
-    }
-    .usp-card {
-      flex: 1 1 300px;
-      background: #f5f9ff;
-      border-radius: 5px;
-      padding: 15px;
-      border-left: 3px solid #4285f4;
-    }
-    .usp-card h5 {
-      margin-top: 0;
-      color: #4285f4;
-    }
-    .limitations-list li {
-      margin-bottom: 8px;
-      color: #666;
-    }
-    .feature-card.highlighted {
-      border-left: 4px solid #4285f4;
-    }
-    .pricing-plan {
-      background: white;
-      border: 1px solid #eee;
       border-radius: 4px;
-      padding: 15px;
-      margin-bottom: 15px;
-    }
-    .pricing-plan h4 {
-      margin-top: 0;
-      border-bottom: 1px solid #eee;
-      padding-bottom: 5px;
-    }
-    .persona-card {
-      background: white;
-      border: 1px solid #eee;
-      border-radius: 4px;
-      padding: 15px;
-      margin-bottom: 15px;
-    }
-    .persona-card h4 {
-      margin-top: 0;
-    }
-    .tag {
-      display: inline-block;
-      background: #e0e0e0;
-      padding: 2px 8px;
-      border-radius: 12px;
-      font-size: 12px;
-      margin-right: 5px;
-      margin-bottom: 5px;
-    }
-    .metrics-card {
-      background: white;
-      border: 1px solid #eee;
-      border-radius: 5px;
-      padding: 15px;
-      margin-bottom: 15px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-    }
-    .metrics-card h4 {
-      margin-top: 0;
-      color: #4285f4;
-      border-bottom: 1px solid #eee;
-      padding-bottom: 8px;
-      margin-bottom: 12px;
-    }
-    .metrics-table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-    .metrics-table td {
-      padding: 6px 0;
-      border-bottom: 1px solid #f5f5f5;
-    }
-    .metrics-table td:first-child {
-      font-weight: 500;
-      color: #555;
-      width: 50%;
-    }
-    .metrics-table td:last-child {
-      text-align: right;
-      font-family: monospace;
-      color: #333;
+      overflow-x: auto;
+      white-space: pre-wrap;
     }
   </style>
 </head>
 <body>
-  <h1>Research Agent Tester</h1>
-  
-  <div class="card">
-    <h2>Submit URL for Scraping</h2>
-    <form id="scrapeForm">
-      <label for="targetUrl">Target URL:</label>
-      <input type="text" id="targetUrl" name="targetUrl" placeholder="https://example.com" required>
-      <button type="submit">Submit</button>
-    </form>
-    <div id="scrapeResult"></div>
-  </div>
-  
-  <div class="card">
-    <h2>Check Task Status</h2>
-    <form id="statusForm">
-      <label for="taskId">Task ID:</label>
-      <input type="text" id="taskId" name="taskId" placeholder="Enter task ID" required>
-      <button type="submit">Check Status</button>
-    </form>
-    <div id="statusResult"></div>
-  </div>
-  
-  <div class="card">
-    <h2>Get Report</h2>
-    <form id="reportForm">
-      <label for="reportId">Report ID:</label>
-      <input type="text" id="reportId" name="reportId" placeholder="Enter report ID" required>
-      <button type="submit">Get Report</button>
-    </form>
-    <div id="reportResult"></div>
-  </div>
-  
-  <div class="card">
-    <h2>Get Detailed Analysis</h2>
-    <form id="analysisForm">
-      <label for="analysisId">Analysis ID:</label>
-      <input type="text" id="analysisId" name="analysisId" placeholder="Enter task ID" required>
-      <button type="submit">Get Analysis</button>
-    </form>
-    <div id="analysisResult"></div>
-    <div id="analysisContent" style="display: none;">
+  <h1>Research Agent - PartyKit Edition</h1>
+  <p>Enter a URL to analyze and get detailed insights about the website.</p>
+
+  <div class="container">
+    <div class="card">
+      <h2>Submit URL</h2>
+      <div class="form-group">
+        <label for="url-input">URL to Analyze:</label>
+        <input type="url" id="url-input" placeholder="https://example.com" required>
+      </div>
+      <button id="submit-btn">Analyze Website</button>
+      <div id="submit-status" class="status hidden"></div>
+    </div>
+
+    <div id="task-card" class="card hidden">
+      <h2>Task Status</h2>
+      <div id="task-info">
+        <p><strong>Task ID:</strong> <span id="task-id"></span></p>
+        <p><strong>URL:</strong> <span id="task-url"></span></p>
+        <p><strong>Status:</strong> <span id="task-status"></span></p>
+        <p><strong>Created:</strong> <span id="task-created"></span></p>
+      </div>
+      <div id="task-status-container" class="status info">
+        Initializing task...
+      </div>
+      <h3>Logs</h3>
+      <div id="task-logs" class="logs"></div>
+    </div>
+
+    <div id="report-card" class="card hidden">
+      <h2>Report</h2>
       <div class="tabs">
-        <div class="tab active" data-tab="features">Features</div>
+        <div class="tab active" data-tab="summary">Summary</div>
+        <div class="tab" data-tab="features">Features</div>
         <div class="tab" data-tab="pricing">Pricing</div>
         <div class="tab" data-tab="customers">Customers</div>
-        <div class="tab" data-tab="performance">Performance</div>
         <div class="tab" data-tab="raw">Raw Data</div>
       </div>
-      
-      <div class="tab-content active" id="features-tab">
-        <h3>Product Features</h3>
-        <div id="features-content"></div>
+
+      <div id="summary-tab" class="tab-content active">
+        <h3>Website Summary</h3>
+        <div id="summary-content"></div>
       </div>
-      
-      <div class="tab-content" id="pricing-tab">
+
+      <div id="features-tab" class="tab-content">
+        <h3>Features Analysis</h3>
+        <div id="features-content"></div>
+        <button id="analyze-features-btn" class="hidden">Analyze Features</button>
+      </div>
+
+      <div id="pricing-tab" class="tab-content">
         <h3>Pricing Analysis</h3>
         <div id="pricing-content"></div>
+        <button id="analyze-pricing-btn" class="hidden">Analyze Pricing</button>
       </div>
-      
-      <div class="tab-content" id="customers-tab">
-        <h3>Customer Analysis</h3>
+
+      <div id="customers-tab" class="tab-content">
+        <h3>Target Customers Analysis</h3>
         <div id="customers-content"></div>
+        <button id="analyze-customers-btn" class="hidden">Analyze Customers</button>
       </div>
-      
-      <div class="tab-content" id="performance-tab">
-        <h3>Performance Metrics</h3>
-        <div id="performance-content"></div>
-      </div>
-      
-      <div class="tab-content" id="raw-tab">
-        <h3>Raw Analysis Data</h3>
+
+      <div id="raw-tab" class="tab-content">
+        <h3>Raw Data</h3>
         <pre id="raw-content"></pre>
       </div>
     </div>
   </div>
-  
-  <div class="card">
-    <h2>Check Analysis Status</h2>
-    <form id="analysisStatusForm">
-      <label for="analysisStatusId">Analysis ID:</label>
-      <input type="text" id="analysisStatusId" name="analysisStatusId" placeholder="Enter task ID" required>
-      <button type="submit">Check Status</button>
-    </form>
-    <div id="analysisStatusResult"></div>
-  </div>
-  
-  <div class="card">
-    <h2>List All Reports</h2>
-    <button id="listReportsBtn">List Reports</button>
-    <div id="reportsListResult"></div>
-  </div>
-  
+
+  <script src="js/partykit-client.js"></script>
   <script>
-    // Replace with your worker URLs after deployment
-    // PRODUCTION NOTE: Update these URLs to your production Worker domains when deploying
-    const WORKER_URL = 'http://localhost:8787';
-    const ANALYSIS_WORKER_URL = 'http://localhost:8788';
-    
-    // Helper function to display results
-    function displayResult(elementId, data, isError = false) {
-      const element = document.getElementById(elementId);
-      element.innerHTML = `<pre class="${isError ? 'error' : ''}">${JSON.stringify(data, null, 2)}</pre>`;
-    }
-    
-    // Submit URL form
-    document.getElementById('scrapeForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const targetUrl = document.getElementById('targetUrl').value;
-      
-      try {
-        const response = await fetch(`${WORKER_URL}/scrape`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ targetUrl })
-        });
-        
-        const result = await response.json();
-        displayResult('scrapeResult', result);
-        
-        // Auto-fill the task ID fields
-        if (result.jobId) {
-          document.getElementById('taskId').value = result.jobId;
-          document.getElementById('reportId').value = result.jobId;
-          document.getElementById('analysisId').value = result.jobId;
-          document.getElementById('analysisStatusId').value = result.jobId;
-        }
-      } catch (error) {
-        displayResult('scrapeResult', { error: error.message }, true);
-      }
-    });
-    
-    // Check status form
-    document.getElementById('statusForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const taskId = document.getElementById('taskId').value;
-      
-      try {
-        const response = await fetch(`${WORKER_URL}/task/${taskId}`);
-        const result = await response.json();
-        displayResult('statusResult', result);
-      } catch (error) {
-        displayResult('statusResult', { error: error.message }, true);
-      }
-    });
-    
-    // Get report form
-    document.getElementById('reportForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const reportId = document.getElementById('reportId').value;
-      
-      try {
-        const response = await fetch(`${WORKER_URL}/report/${reportId}`);
-        const result = await response.json();
-        displayResult('reportResult', result);
-        
-        // If we have a report URL, add a link to it
-        if (result.reportUrl) {
-          const linkElement = document.createElement('p');
-          linkElement.innerHTML = `<a href="${result.reportUrl}" target="_blank">Open Report</a>`;
-          document.getElementById('reportResult').appendChild(linkElement);
-        }
-        
-        // If we have report data directly (local development), display it
-        if (result.reportData) {
-          const reportDataElement = document.createElement('div');
-          reportDataElement.innerHTML = `
-            <h3>Report Data (Local Development)</h3>
-            <pre>${JSON.stringify(result.reportData, null, 2)}</pre>
-          `;
-          document.getElementById('reportResult').appendChild(reportDataElement);
-        }
-        
-        // Always add a direct download link for local development
-        const downloadLinkElement = document.createElement('p');
-        downloadLinkElement.innerHTML = `<a href="${WORKER_URL}/download/${reportId}" target="_blank">Direct Download (Local Development)</a>`;
-        document.getElementById('reportResult').appendChild(downloadLinkElement);
-      } catch (error) {
-        displayResult('reportResult', { error: error.message }, true);
-      }
-    });
-    
-    // Get detailed analysis form
-    document.getElementById('analysisForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const analysisId = document.getElementById('analysisId').value;
-      
-      try {
-        const response = await fetch(`${ANALYSIS_WORKER_URL}/analysis-report/${analysisId}`);
-        const result = await response.json();
-        
-        // Display the raw result
-        displayResult('analysisResult', result);
-        
-        // If we have a report, display it in a more user-friendly way
-        if (result.report) {
-          document.getElementById('analysisContent').style.display = 'block';
-          
-          // Display raw data
-          document.getElementById('raw-content').textContent = JSON.stringify(result.report, null, 2);
-          
-          // Display features
-          const featuresContent = document.getElementById('features-content');
-          featuresContent.innerHTML = '';
-          
-          if (result.report.features) {
-            // Main features
-            if (result.report.features.main_features && result.report.features.main_features.length > 0) {
-              featuresContent.innerHTML += '<h4>Main Features</h4>';
-              result.report.features.main_features.forEach(feature => {
-                let benefitsHtml = '';
-                if (feature.benefits && feature.benefits.length > 0) {
-                  benefitsHtml = `
-                    <div class="benefits">
-                      <h5>Benefits:</h5>
-                      <ul>
-                        ${feature.benefits.map(benefit => `<li>${benefit}</li>`).join('')}
-                      </ul>
-                    </div>
-                  `;
-                }
-                
-                let technicalDetailsHtml = '';
-                if (feature.technical_details) {
-                  technicalDetailsHtml = `
-                    <div class="technical-details">
-                      <h5>Technical Details:</h5>
-                      <p>${feature.technical_details}</p>
-                    </div>
-                  `;
-                }
-                
-                featuresContent.innerHTML += `
-                  <div class="feature-card">
-                    <h4>${feature.name}</h4>
-                    <p>${feature.description}</p>
-                    ${benefitsHtml}
-                    ${technicalDetailsHtml}
-                  </div>
-                `;
-              });
-            }
-            
-            // Feature categories
-            if (result.report.features.feature_categories && result.report.features.feature_categories.length > 0) {
-              featuresContent.innerHTML += '<h4>Feature Categories</h4>';
-              result.report.features.feature_categories.forEach(category => {
-                featuresContent.innerHTML += `
-                  <div class="feature-category">
-                    <h5>${category.category}</h5>
-                    <ul>
-                      ${category.features.map(feature => `<li>${feature}</li>`).join('')}
-                    </ul>
-                  </div>
-                `;
-              });
-            }
-            
-            // Unique selling points
-            if (result.report.features.unique_selling_points && result.report.features.unique_selling_points.length > 0) {
-              featuresContent.innerHTML += '<h4>Unique Selling Points</h4>';
-              featuresContent.innerHTML += '<div class="usp-container">';
-              result.report.features.unique_selling_points.forEach(usp => {
-                featuresContent.innerHTML += `
-                  <div class="usp-card">
-                    <h5>${usp.point}</h5>
-                    <p>${usp.description}</p>
-                  </div>
-                `;
-              });
-              featuresContent.innerHTML += '</div>';
-            }
-            
-            // Limitations
-            if (result.report.features.limitations && result.report.features.limitations.length > 0) {
-              featuresContent.innerHTML += '<h4>Limitations</h4>';
-              featuresContent.innerHTML += '<ul class="limitations-list">';
-              result.report.features.limitations.forEach(limitation => {
-                featuresContent.innerHTML += `<li>${limitation}</li>`;
-              });
-              featuresContent.innerHTML += '</ul>';
-            }
-            
-            // Fallback for old format
-            if (!result.report.features.main_features && result.report.features.core_features) {
-              // Core features
-              featuresContent.innerHTML += '<h4>Core Features</h4>';
-              result.report.features.core_features.forEach(feature => {
-                featuresContent.innerHTML += `
-                  <div class="feature-card ${feature.highlighted ? 'highlighted' : ''}">
-                    <h4>${feature.name}</h4>
-                    <p>${feature.description}</p>
-                  </div>
-                `;
-              });
-              
-              // Advanced features
-              if (result.report.features.advanced_features && result.report.features.advanced_features.length > 0) {
-                featuresContent.innerHTML += '<h4>Advanced Features</h4>';
-                result.report.features.advanced_features.forEach(feature => {
-                  featuresContent.innerHTML += `
-                    <div class="feature-card ${feature.highlighted ? 'highlighted' : ''}">
-                      <h4>${feature.name}</h4>
-                      <p>${feature.description}</p>
-                    </div>
-                  `;
-                });
-              }
-              
-              // Integrations
-              if (result.report.features.integrations && result.report.features.integrations.length > 0) {
-                featuresContent.innerHTML += '<h4>Integrations</h4>';
-                result.report.features.integrations.forEach(integration => {
-                  featuresContent.innerHTML += `
-                    <div class="feature-card">
-                      <h4>${integration.name}</h4>
-                      <p>${integration.description}</p>
-                    </div>
-                  `;
-                });
-              }
-            }
-          } else if (result.report.features && result.report.features.raw) {
-            // Handle raw text response
-            featuresContent.innerHTML = `<p>${result.report.features.raw}</p>`;
-          } else if (result.report.features && result.report.features.error) {
-            // Handle error
-            featuresContent.innerHTML = `<p class="error">Error: ${result.report.features.error}</p>`;
-          } else {
-            featuresContent.innerHTML = '<p>No feature data available</p>';
-          }
-          
-          // Display pricing
-          const pricingContent = document.getElementById('pricing-content');
-          pricingContent.innerHTML = '';
-          
-          if (result.report.pricing && result.report.pricing.pricing_model) {
-            pricingContent.innerHTML += `
-              <p><strong>Pricing Model:</strong> ${result.report.pricing.pricing_model}</p>
-              <p><strong>Currency:</strong> ${result.report.pricing.currency || 'Not specified'}</p>
-            `;
-            
-            // Plans
-            if (result.report.pricing.plans && result.report.pricing.plans.length > 0) {
-              pricingContent.innerHTML += '<h4>Plans</h4>';
-              result.report.pricing.plans.forEach(plan => {
-                pricingContent.innerHTML += `
-                  <div class="pricing-plan">
-                    <h4>${plan.name}</h4>
-                    <p><strong>Price:</strong> ${plan.price}</p>
-                    <p><strong>Billing:</strong> ${plan.billing_cycle}</p>
-                    
-                    <p><strong>Features:</strong></p>
-                    <ul>
-                      ${plan.features.map(feature => `<li>${feature}</li>`).join('')}
-                    </ul>
-                    
-                    ${plan.limitations && plan.limitations.length > 0 ? `
-                      <p><strong>Limitations:</strong></p>
-                      <ul>
-                        ${plan.limitations.map(limitation => `<li>${limitation}</li>`).join('')}
-                      </ul>
-                    ` : ''}
-                  </div>
-                `;
-              });
-            }
-            
-            // Free tier
-            if (result.report.pricing.free_tier) {
-              pricingContent.innerHTML += `
-                <h4>Free Tier</h4>
-                <p><strong>Available:</strong> ${result.report.pricing.free_tier.available ? 'Yes' : 'No'}</p>
-              `;
-              
-              if (result.report.pricing.free_tier.limitations && result.report.pricing.free_tier.limitations.length > 0) {
-                pricingContent.innerHTML += `
-                  <p><strong>Limitations:</strong></p>
-                  <ul>
-                    ${result.report.pricing.free_tier.limitations.map(limitation => `<li>${limitation}</li>`).join('')}
-                  </ul>
-                `;
-              }
-            }
-            
-            // Free trial
-            if (result.report.pricing.free_trial) {
-              pricingContent.innerHTML += `
-                <h4>Free Trial</h4>
-                <p><strong>Available:</strong> ${result.report.pricing.free_trial.available ? 'Yes' : 'No'}</p>
-                ${result.report.pricing.free_trial.duration ? `<p><strong>Duration:</strong> ${result.report.pricing.free_trial.duration}</p>` : ''}
-              `;
-            }
-            
-            // Special offers
-            if (result.report.pricing.special_offers && result.report.pricing.special_offers.length > 0) {
-              pricingContent.innerHTML += `
-                <h4>Special Offers</h4>
-                <ul>
-                  ${result.report.pricing.special_offers.map(offer => `<li>${offer}</li>`).join('')}
-                </ul>
-              `;
-            }
-            
-            // Pricing analysis
-            if (result.report.pricing.pricing_analysis) {
-              pricingContent.innerHTML += `
-                <h4>Pricing Analysis</h4>
-                <p>${result.report.pricing.pricing_analysis}</p>
-              `;
-            }
-          } else if (result.report.pricing && result.report.pricing.raw) {
-            // Handle raw text response
-            pricingContent.innerHTML = `<p>${result.report.pricing.raw}</p>`;
-          } else if (result.report.pricing && result.report.pricing.error) {
-            // Handle error
-            pricingContent.innerHTML = `<p class="error">Error: ${result.report.pricing.error}</p>`;
-          } else {
-            pricingContent.innerHTML = '<p>No pricing data available</p>';
-          }
-          
-          // Display customers
-          const customersContent = document.getElementById('customers-content');
-          customersContent.innerHTML = '';
-          
-          if (result.report.customers && result.report.customers.target_audience) {
-            // Target audience
-            customersContent.innerHTML += `
-              <h4>Target Audience</h4>
-              <p><strong>Primary:</strong> ${result.report.customers.target_audience.primary}</p>
-              ${result.report.customers.target_audience.secondary ? `<p><strong>Secondary:</strong> ${result.report.customers.target_audience.secondary}</p>` : ''}
-            `;
-            
-            if (result.report.customers.target_audience.industries && result.report.customers.target_audience.industries.length > 0) {
-              customersContent.innerHTML += `
-                <p><strong>Industries:</strong></p>
-                <div>
-                  ${result.report.customers.target_audience.industries.map(industry => `<span class="tag">${industry}</span>`).join('')}
-                </div>
-              `;
-            }
-            
-            // User personas
-            if (result.report.customers.user_personas && result.report.customers.user_personas.length > 0) {
-              customersContent.innerHTML += '<h4>User Personas</h4>';
-              result.report.customers.user_personas.forEach(persona => {
-                customersContent.innerHTML += `
-                  <div class="persona-card">
-                    <h4>${persona.name}</h4>
-                    <p><strong>Role:</strong> ${persona.role}</p>
-                    
-                    <p><strong>Pain Points:</strong></p>
-                    <ul>
-                      ${persona.pain_points.map(point => `<li>${point}</li>`).join('')}
-                    </ul>
-                    
-                    <p><strong>Goals:</strong></p>
-                    <ul>
-                      ${persona.goals.map(goal => `<li>${goal}</li>`).join('')}
-                    </ul>
-                    
-                    <p><strong>How Product Helps:</strong> ${persona.how_product_helps}</p>
-                  </div>
-                `;
-              });
-            }
-            
-            // Market positioning
-            if (result.report.customers.market_positioning) {
-              customersContent.innerHTML += `
-                <h4>Market Positioning</h4>
-                <p><strong>Category:</strong> ${result.report.customers.market_positioning.category}</p>
-                
-                <p><strong>Differentiators:</strong></p>
-                <ul>
-                  ${result.report.customers.market_positioning.differentiators.map(diff => `<li>${diff}</li>`).join('')}
-                </ul>
-                
-                <p><strong>Competitors:</strong></p>
-                <div>
-                  ${result.report.customers.market_positioning.competitors.map(comp => `<span class="tag">${comp}</span>`).join('')}
-                </div>
-              `;
-            }
-            
-            // Customer evidence
-            if (result.report.customers.customer_evidence) {
-              customersContent.innerHTML += '<h4>Customer Evidence</h4>';
-              
-              if (result.report.customers.customer_evidence.testimonials && result.report.customers.customer_evidence.testimonials.length > 0) {
-                customersContent.innerHTML += `
-                  <p><strong>Testimonials:</strong></p>
-                  <ul>
-                    ${result.report.customers.customer_evidence.testimonials.map(testimonial => `<li>${testimonial}</li>`).join('')}
-                  </ul>
-                `;
-              }
-              
-              if (result.report.customers.customer_evidence.case_studies && result.report.customers.customer_evidence.case_studies.length > 0) {
-                customersContent.innerHTML += `
-                  <p><strong>Case Studies:</strong></p>
-                  <ul>
-                    ${result.report.customers.customer_evidence.case_studies.map(study => `<li>${study}</li>`).join('')}
-                  </ul>
-                `;
-              }
-              
-              if (result.report.customers.customer_evidence.logos_displayed && result.report.customers.customer_evidence.logos_displayed.length > 0) {
-                customersContent.innerHTML += `
-                  <p><strong>Logos Displayed:</strong></p>
-                  <div>
-                    ${result.report.customers.customer_evidence.logos_displayed.map(logo => `<span class="tag">${logo}</span>`).join('')}
-                  </div>
-                `;
-              }
-            }
-            
-            // Customer analysis
-            if (result.report.customers.customer_analysis) {
-              customersContent.innerHTML += `
-                <h4>Customer Analysis</h4>
-                <p>${result.report.customers.customer_analysis}</p>
-              `;
-            }
-          } else if (result.report.customers && result.report.customers.raw) {
-            // Handle raw text response
-            customersContent.innerHTML = `<p>${result.report.customers.raw}</p>`;
-          } else if (result.report.customers && result.report.customers.error) {
-            // Handle error
-            customersContent.innerHTML = `<p class="error">Error: ${result.report.customers.error}</p>`;
-          } else {
-            customersContent.innerHTML = '<p>No customer data available</p>';
-          }
-          
-          // Display performance metrics
-          const performanceContent = document.getElementById('performance-content');
-          performanceContent.innerHTML = '';
-          
-          if (result.report.performance) {
-            performanceContent.innerHTML += `
-              <div class="metrics-card">
-                <h4>Analysis Timing</h4>
-                <table class="metrics-table">
-                  <tr>
-                    <td>Total Analysis Time:</td>
-                    <td>${(result.report.performance.total_time_ms / 1000).toFixed(2)} seconds</td>
-                  </tr>
-                  <tr>
-                    <td>Features Analysis Time:</td>
-                    <td>${(result.report.performance.features_analysis_time_ms / 1000).toFixed(2)} seconds</td>
-                  </tr>
-                  <tr>
-                    <td>Pricing Analysis Time:</td>
-                    <td>${(result.report.performance.pricing_analysis_time_ms / 1000).toFixed(2)} seconds</td>
-                  </tr>
-                  <tr>
-                    <td>Customers Analysis Time:</td>
-                    <td>${(result.report.performance.customers_analysis_time_ms / 1000).toFixed(2)} seconds</td>
-                  </tr>
-                </table>
-              </div>
-            `;
-            
-            // If token usage information is available
-            if (result.report.token_usage) {
-              performanceContent.innerHTML += `
-                <div class="metrics-card">
-                  <h4>Token Usage</h4>
-                  <table class="metrics-table">
-                    <tr>
-                      <td>Total Tokens:</td>
-                      <td>${result.report.token_usage.total_tokens || 'N/A'}</td>
-                    </tr>
-                    <tr>
-                      <td>Prompt Tokens:</td>
-                      <td>${result.report.token_usage.prompt_tokens || 'N/A'}</td>
-                    </tr>
-                    <tr>
-                      <td>Completion Tokens:</td>
-                      <td>${result.report.token_usage.completion_tokens || 'N/A'}</td>
-                    </tr>
-                  </table>
-                </div>
-              `;
-              
-              // If cost information is available
-              if (result.report.cost_estimate) {
-                performanceContent.innerHTML += `
-                  <div class="metrics-card">
-                    <h4>Cost Estimate</h4>
-                    <table class="metrics-table">
-                      <tr>
-                        <td>Total Cost:</td>
-                        <td>$${result.report.cost_estimate.total_cost?.toFixed(4) || 'N/A'}</td>
-                      </tr>
-                      <tr>
-                        <td>Prompt Cost:</td>
-                        <td>$${result.report.cost_estimate.prompt_cost?.toFixed(4) || 'N/A'}</td>
-                      </tr>
-                      <tr>
-                        <td>Completion Cost:</td>
-                        <td>$${result.report.cost_estimate.completion_cost?.toFixed(4) || 'N/A'}</td>
-                      </tr>
-                    </table>
-                  </div>
-                `;
-              } else {
-                performanceContent.innerHTML += `
-                  <div class="metrics-card">
-                    <h4>Cost Estimate</h4>
-                    <p>No cost information available</p>
-                  </div>
-                `;
-              }
-            } else {
-              performanceContent.innerHTML += `
-                <div class="metrics-card">
-                  <h4>Token Usage</h4>
-                  <p>No token usage information available</p>
-                </div>
-              `;
-            }
-          } else {
-            performanceContent.innerHTML = '<p>No performance data available</p>';
-          }
-        }
-      } catch (error) {
-        displayResult('analysisResult', { error: error.message }, true);
-      }
-    });
-    
-    // Check analysis status form
-    document.getElementById('analysisStatusForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const analysisId = document.getElementById('analysisStatusId').value;
-      
-      try {
-        const response = await fetch(`${ANALYSIS_WORKER_URL}/analysis-status/${analysisId}`);
-        const result = await response.json();
-        displayResult('analysisStatusResult', result);
-      } catch (error) {
-        displayResult('analysisStatusResult', { error: error.message }, true);
-      }
-    });
-    
-    // List all reports
-    document.getElementById('listReportsBtn').addEventListener('click', async () => {
-      try {
-        const response = await fetch(`${WORKER_URL}/reports`);
-        const result = await response.json();
-        
-        // Display the raw result
-        displayResult('reportsListResult', result);
-        
-        // If we have reports, create a more user-friendly display
-        if (result.reports && result.reports.length > 0) {
-          const reportsElement = document.createElement('div');
-          reportsElement.innerHTML = '<h3>Available Reports</h3><ul>';
-          
-          result.reports.forEach(report => {
-            const date = new Date(report.uploaded).toLocaleString();
-            const size = (report.size / 1024).toFixed(2) + ' KB';
-            
-            reportsElement.innerHTML += `
-              <li>
-                <strong>${report.reportId}</strong> (${size}, uploaded ${date})
-                <div>
-                  <a href="${WORKER_URL}/report/${report.reportId}" target="_blank">View Report Info</a> | 
-                  <a href="${WORKER_URL}/download/${report.reportId}" target="_blank">Direct Download</a> |
-                  <a href="#" onclick="document.getElementById('analysisId').value='${report.reportId}'; document.getElementById('analysisForm').dispatchEvent(new Event('submit')); return false;">View Analysis</a>
-                </div>
-              </li>
-            `;
-          });
-          
-          reportsElement.innerHTML += '</ul>';
-          document.getElementById('reportsListResult').appendChild(reportsElement);
-        }
-      } catch (error) {
-        displayResult('reportsListResult', { error: error.message }, true);
-      }
-    });
-    
-    // Tab switching
+    // Initialize the client
+    const client = new ResearchAgentClient();
+
+    // DOM elements
+    const urlInput = document.getElementById('url-input');
+    const submitBtn = document.getElementById('submit-btn');
+    const submitStatus = document.getElementById('submit-status');
+    const taskCard = document.getElementById('task-card');
+    const taskId = document.getElementById('task-id');
+    const taskUrl = document.getElementById('task-url');
+    const taskStatus = document.getElementById('task-status');
+    const taskCreated = document.getElementById('task-created');
+    const taskStatusContainer = document.getElementById('task-status-container');
+    const taskLogs = document.getElementById('task-logs');
+    const reportCard = document.getElementById('report-card');
+    const summaryContent = document.getElementById('summary-content');
+    const featuresContent = document.getElementById('features-content');
+    const pricingContent = document.getElementById('pricing-content');
+    const customersContent = document.getElementById('customers-content');
+    const rawContent = document.getElementById('raw-content');
+    const analyzeFeaturesBtn = document.getElementById('analyze-features-btn');
+    const analyzePricingBtn = document.getElementById('analyze-pricing-btn');
+    const analyzeCustomersBtn = document.getElementById('analyze-customers-btn');
+
+    // Tab functionality
     document.querySelectorAll('.tab').forEach(tab => {
       tab.addEventListener('click', () => {
-        // Remove active class from all tabs
+        // Remove active class from all tabs and tab contents
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
         document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
         
-        // Add active class to clicked tab
+        // Add active class to clicked tab and corresponding content
         tab.classList.add('active');
         document.getElementById(`${tab.dataset.tab}-tab`).classList.add('active');
       });
     });
+
+    // Submit URL
+    submitBtn.addEventListener('click', async () => {
+      const url = urlInput.value.trim();
+      
+      if (!url) {
+        showStatus(submitStatus, 'Please enter a valid URL', 'error');
+        return;
+      }
+      
+      try {
+        submitBtn.disabled = true;
+        showStatus(submitStatus, 'Submitting URL...', 'info');
+        
+        const response = await client.submitUrl(url);
+        
+        showStatus(submitStatus, 'URL submitted successfully!', 'success');
+        
+        // Show task card
+        taskCard.classList.remove('hidden');
+        
+        // Update task info
+        taskId.textContent = response.taskId;
+        taskUrl.textContent = url;
+        taskStatus.textContent = response.status;
+        taskCreated.textContent = new Date().toLocaleString();
+        
+        // Start polling for status updates
+        client.startStatusPolling(response.taskId, updateTaskStatus);
+      } catch (error) {
+        console.error('Error submitting URL:', error);
+        showStatus(submitStatus, `Error: ${error.message}`, 'error');
+        submitBtn.disabled = false;
+      }
+    });
+
+    // Update task status
+    function updateTaskStatus(status) {
+      taskStatus.textContent = status.status;
+      
+      // Update status container
+      let statusClass = 'info';
+      let statusText = 'Processing...';
+      
+      switch (status.status) {
+        case 'initializing':
+          statusText = 'Initializing task...';
+          break;
+        case 'fetching':
+          statusText = 'Fetching URL...';
+          break;
+        case 'processing':
+          statusText = 'Processing content...';
+          break;
+        case 'completed':
+          statusText = 'Content processing completed!';
+          statusClass = 'success';
+          break;
+        case 'report_generated':
+          statusText = 'Report generated successfully!';
+          statusClass = 'success';
+          // Load the report
+          loadReport(status.id);
+          break;
+        case 'error':
+          statusText = `Error: ${status.error || 'Unknown error'}`;
+          statusClass = 'error';
+          break;
+      }
+      
+      taskStatusContainer.className = `status ${statusClass}`;
+      taskStatusContainer.textContent = statusText;
+      
+      // Update logs
+      updateLogs(status.logs || []);
+      
+      // Re-enable submit button if task is completed or failed
+      if (['completed', 'report_generated', 'error'].includes(status.status)) {
+        submitBtn.disabled = false;
+      }
+    }
+
+    // Update logs
+    function updateLogs(logs) {
+      taskLogs.innerHTML = '';
+      
+      logs.forEach(log => {
+        const logEntry = document.createElement('div');
+        logEntry.className = `log-entry ${log.level}`;
+        logEntry.textContent = `[${new Date(log.timestamp).toLocaleTimeString()}] ${log.message}`;
+        taskLogs.appendChild(logEntry);
+      });
+      
+      // Scroll to bottom
+      taskLogs.scrollTop = taskLogs.scrollHeight;
+    }
+
+    // Load report
+    async function loadReport(reportId) {
+      try {
+        // Show report card
+        reportCard.classList.remove('hidden');
+        
+        // Get the report
+        const report = await client.getReport(reportId);
+        
+        // Update summary
+        summaryContent.innerHTML = `
+          <p><strong>Title:</strong> ${report.data.title}</p>
+          <p><strong>Description:</strong> ${report.data.description}</p>
+          <p><strong>Extracted At:</strong> ${new Date(report.extractedAt).toLocaleString()}</p>
+          <p><strong>Links:</strong> ${report.data.links.length}</p>
+          <p><strong>Images:</strong> ${report.data.images.length}</p>
+          <p><strong>Headings:</strong> H1=${report.data.headings.h1.length}, H2=${report.data.headings.h2.length}, H3=${report.data.headings.h3.length}</p>
+        `;
+        
+        // Update raw data
+        rawContent.textContent = JSON.stringify(report, null, 2);
+        
+        // Try to get the analysis report
+        try {
+          const analysisReport = await client.getAnalysisReport(reportId);
+          
+          // Update features
+          if (analysisReport.features && analysisReport.features.analysis) {
+            featuresContent.innerHTML = `<div>${analysisReport.features.analysis.replace(/\n/g, '<br>')}</div>`;
+          } else {
+            featuresContent.innerHTML = '<p>Features analysis not available.</p>';
+          }
+          
+          // Update pricing
+          if (analysisReport.pricing && analysisReport.pricing.analysis) {
+            pricingContent.innerHTML = `<div>${analysisReport.pricing.analysis.replace(/\n/g, '<br>')}</div>`;
+          } else {
+            pricingContent.innerHTML = '<p>Pricing analysis not available.</p>';
+          }
+          
+          // Update customers
+          if (analysisReport.customers && analysisReport.customers.analysis) {
+            customersContent.innerHTML = `<div>${analysisReport.customers.analysis.replace(/\n/g, '<br>')}</div>`;
+          } else {
+            customersContent.innerHTML = '<p>Customers analysis not available.</p>';
+          }
+        } catch (error) {
+          console.error('Error loading analysis report:', error);
+          
+          // Show analysis buttons
+          analyzeFeaturesBtn.classList.remove('hidden');
+          analyzePricingBtn.classList.remove('hidden');
+          analyzeCustomersBtn.classList.remove('hidden');
+          
+          // Set content
+          featuresContent.innerHTML = '<p>Click the button below to analyze features.</p>';
+          pricingContent.innerHTML = '<p>Click the button below to analyze pricing.</p>';
+          customersContent.innerHTML = '<p>Click the button below to analyze customers.</p>';
+          
+          // Add event listeners
+          analyzeFeaturesBtn.addEventListener('click', () => triggerAnalysis(reportId));
+          analyzePricingBtn.addEventListener('click', () => triggerAnalysis(reportId));
+          analyzeCustomersBtn.addEventListener('click', () => triggerAnalysis(reportId));
+        }
+      } catch (error) {
+        console.error('Error loading report:', error);
+      }
+    }
+
+    // Trigger analysis
+    async function triggerAnalysis(taskId) {
+      try {
+        // Disable analysis buttons
+        analyzeFeaturesBtn.disabled = true;
+        analyzePricingBtn.disabled = true;
+        analyzeCustomersBtn.disabled = true;
+        
+        // Update content
+        featuresContent.innerHTML = '<p>Analyzing features...</p>';
+        pricingContent.innerHTML = '<p>Analyzing pricing...</p>';
+        customersContent.innerHTML = '<p>Analyzing customers...</p>';
+        
+        // Trigger analysis
+        const response = await client.triggerAnalysis(taskId);
+        
+        // Start polling for analysis status
+        client.startAnalysisPolling(taskId, updateAnalysisStatus);
+      } catch (error) {
+        console.error('Error triggering analysis:', error);
+        
+        // Re-enable analysis buttons
+        analyzeFeaturesBtn.disabled = false;
+        analyzePricingBtn.disabled = false;
+        analyzeCustomersBtn.disabled = false;
+        
+        // Update content
+        featuresContent.innerHTML = `<p>Error analyzing features: ${error.message}</p>`;
+        pricingContent.innerHTML = `<p>Error analyzing pricing: ${error.message}</p>`;
+        customersContent.innerHTML = `<p>Error analyzing customers: ${error.message}</p>`;
+      }
+    }
+
+    // Update analysis status
+    async function updateAnalysisStatus(status) {
+      // If analysis is completed, load the report
+      if (status.status === 'completed') {
+        try {
+          const analysisReport = await client.getAnalysisReport(status.taskId);
+          
+          // Hide analysis buttons
+          analyzeFeaturesBtn.classList.add('hidden');
+          analyzePricingBtn.classList.add('hidden');
+          analyzeCustomersBtn.classList.add('hidden');
+          
+          // Update features
+          if (analysisReport.features && analysisReport.features.analysis) {
+            featuresContent.innerHTML = `<div>${analysisReport.features.analysis.replace(/\n/g, '<br>')}</div>`;
+          } else {
+            featuresContent.innerHTML = '<p>Features analysis not available.</p>';
+          }
+          
+          // Update pricing
+          if (analysisReport.pricing && analysisReport.pricing.analysis) {
+            pricingContent.innerHTML = `<div>${analysisReport.pricing.analysis.replace(/\n/g, '<br>')}</div>`;
+          } else {
+            pricingContent.innerHTML = '<p>Pricing analysis not available.</p>';
+          }
+          
+          // Update customers
+          if (analysisReport.customers && analysisReport.customers.analysis) {
+            customersContent.innerHTML = `<div>${analysisReport.customers.analysis.replace(/\n/g, '<br>')}</div>`;
+          } else {
+            customersContent.innerHTML = '<p>Customers analysis not available.</p>';
+          }
+        } catch (error) {
+          console.error('Error loading analysis report:', error);
+          
+          // Re-enable analysis buttons
+          analyzeFeaturesBtn.disabled = false;
+          analyzePricingBtn.disabled = false;
+          analyzeCustomersBtn.disabled = false;
+          
+          // Update content
+          featuresContent.innerHTML = `<p>Error loading analysis report: ${error.message}</p>`;
+          pricingContent.innerHTML = `<p>Error loading analysis report: ${error.message}</p>`;
+          customersContent.innerHTML = `<p>Error loading analysis report: ${error.message}</p>`;
+        }
+      } else if (status.status === 'error') {
+        // Re-enable analysis buttons
+        analyzeFeaturesBtn.disabled = false;
+        analyzePricingBtn.disabled = false;
+        analyzeCustomersBtn.disabled = false;
+        
+        // Update content
+        featuresContent.innerHTML = `<p>Error analyzing features: ${status.error || 'Unknown error'}</p>`;
+        pricingContent.innerHTML = `<p>Error analyzing pricing: ${status.error || 'Unknown error'}</p>`;
+        customersContent.innerHTML = `<p>Error analyzing customers: ${status.error || 'Unknown error'}</p>`;
+      }
+    }
+
+    // Helper function to show status messages
+    function showStatus(element, message, type) {
+      element.textContent = message;
+      element.className = `status ${type}`;
+      element.classList.remove('hidden');
+      
+      // Hide after 5 seconds if it's a success message
+      if (type === 'success') {
+        setTimeout(() => {
+          element.classList.add('hidden');
+        }, 5000);
+      }
+    }
   </script>
 </body>
 </html> 

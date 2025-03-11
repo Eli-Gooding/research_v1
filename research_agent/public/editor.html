@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Collaborative Document Editor</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+      line-height: 1.6;
+      color: #333;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    
+    h1 {
+      margin-bottom: 20px;
+      color: #2c3e50;
+    }
+    
+    .editor-container {
+      display: flex;
+      gap: 20px;
+    }
+    
+    .editor-main {
+      flex: 3;
+    }
+    
+    .editor-sidebar {
+      flex: 1;
+      background-color: #f8f9fa;
+      padding: 15px;
+      border-radius: 5px;
+    }
+    
+    #editor {
+      width: 100%;
+      height: 500px;
+      padding: 15px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+      font-size: 14px;
+      line-height: 1.5;
+      resize: vertical;
+    }
+    
+    .status-bar {
+      margin-top: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px;
+      background-color: #f8f9fa;
+      border-radius: 5px;
+    }
+    
+    .status-indicator {
+      display: flex;
+      align-items: center;
+    }
+    
+    .status-indicator::before {
+      content: '';
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: 8px;
+    }
+    
+    .status-connected::before {
+      background-color: #28a745;
+    }
+    
+    .status-disconnected::before {
+      background-color: #dc3545;
+    }
+    
+    .users-list {
+      margin-top: 20px;
+    }
+    
+    .users-list ul {
+      list-style-type: none;
+      padding: 0;
+    }
+    
+    .users-list li {
+      padding: 8px 0;
+      border-bottom: 1px solid #eee;
+    }
+    
+    .status-active {
+      color: #28a745;
+    }
+    
+    .status-idle {
+      color: #ffc107;
+    }
+    
+    .status-offline {
+      color: #6c757d;
+    }
+    
+    .button {
+      padding: 8px 16px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    
+    .button:hover {
+      background-color: #0069d9;
+    }
+  </style>
+</head>
+<body>
+  <h1>Collaborative Document Editor</h1>
+  
+  <div class="editor-container">
+    <div class="editor-main">
+      <textarea id="editor" placeholder="Start typing here..."></textarea>
+      
+      <div class="status-bar">
+        <div class="status-indicator" id="status-indicator">
+          <span id="status">Connecting...</span>
+        </div>
+        
+        <button class="button" id="save-button">Save Document</button>
+      </div>
+    </div>
+    
+    <div class="editor-sidebar">
+      <h3>Connected Users</h3>
+      <div class="users-list" id="users">
+        <div>No other users connected</div>
+      </div>
+    </div>
+  </div>
+  
+  <script src="/js/document-editor.js"></script>
+  <script>
+    // Additional initialization if needed
+    document.getElementById('save-button').addEventListener('click', () => {
+      if (window.documentEditor) {
+        const content = window.documentEditor.getContent();
+        
+        // You could implement saving to a server here
+        fetch('/party/document/document', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ content })
+        })
+        .then(response => response.json())
+        .then(data => {
+          alert('Document saved successfully!');
+        })
+        .catch(error => {
+          console.error('Error saving document:', error);
+          alert('Failed to save document');
+        });
+      }
+    });
+  </script>
+</body>
+</html> 
