@@ -11,6 +11,7 @@ import {
   R2Bucket,
   ExecutionContext
 } from '@cloudflare/workers-types';
+import * as litellm from 'litellm';
 
 // Define the environment interface with our bindings
 export interface Env {
@@ -25,6 +26,18 @@ export interface Env {
   // Model pricing per 1K tokens (in USD)
   OPENAI_PROMPT_PRICE: string;
   OPENAI_COMPLETION_PRICE: string;
+}
+
+// Mock ResearchTaskDO class to satisfy the Durable Object binding
+// This is not used in this worker but is required for the binding
+export class ResearchTaskDO {
+  constructor(state: DurableObjectState, env: Env) {
+    // This is a mock class and does nothing
+  }
+
+  async fetch(request: Request): Promise<Response> {
+    return new Response('This is a mock ResearchTaskDO class', { status: 501 });
+  }
 }
 
 // Helper function to generate a response with CORS headers
@@ -459,42 +472,46 @@ export class AnalysisTaskDO {
   // Analyze features
   private async analyzeFeatures(reportData: any): Promise<any> {
     const taskId = await this.state.storage.get('taskId') as string;
-    console.log(`[${taskId}] Analyzing features`);
     
     try {
       // Prepare the prompt for OpenAI
       const prompt = `
-Analyze the following website content and extract all features and offerings of the product or service:
+I need to analyze the features of a product or service based on the following website content:
 
-TITLE: ${reportData.metadata.title || 'N/A'}
-DESCRIPTION: ${reportData.metadata.description || 'N/A'}
-HEADINGS:
-${reportData.content.headings.h1.map((h: string) => `H1: ${h}`).join('\n')}
-${reportData.content.headings.h2.slice(0, 10).map((h: string) => `H2: ${h}`).join('\n')}
-${reportData.content.headings.h3.slice(0, 10).map((h: string) => `H3: ${h}`).join('\n')}
+Title: ${reportData.metadata.title || 'N/A'}
+Description: ${reportData.metadata.description || 'N/A'}
+URL: ${reportData.url || 'N/A'}
 
-LINKS (sample):
-${reportData.content.links.slice(0, 20).map((link: any) => `- ${link.text || 'N/A'}: ${link.url || 'N/A'}`).join('\n')}
+Content:
+${Array.isArray(reportData.content) 
+  ? reportData.content.join('\n\n') 
+  : reportData.content.text 
+    ? reportData.content.text.join('\n\n')
+    : JSON.stringify(reportData.content)
+}
 
 Based on this content, provide a comprehensive analysis of the product/service features in JSON format:
-1. List all features and capabilities
-2. Categorize features (e.g., core features, advanced features, integrations)
-3. Identify unique selling points or differentiators
-4. Note any limitations or constraints mentioned
 
-Format your response as valid JSON with the following structure:
 {
-  "core_features": [
-    {"name": "Feature name", "description": "Brief description", "highlighted": true/false}
-  ],
-  "advanced_features": [
-    {"name": "Feature name", "description": "Brief description", "highlighted": true/false}
-  ],
-  "integrations": [
-    {"name": "Integration name", "description": "Brief description"}
+  "main_features": [
+    {
+      "name": "Feature Name",
+      "description": "Detailed description of the feature",
+      "benefits": ["Benefit 1", "Benefit 2"],
+      "technical_details": "Any technical specifications or implementation details"
+    }
   ],
   "unique_selling_points": [
-    "USP 1", "USP 2"
+    {
+      "point": "Unique selling point",
+      "description": "Why this is a competitive advantage"
+    }
+  ],
+  "feature_categories": [
+    {
+      "category": "Category name (e.g., Security, Performance, etc.)",
+      "features": ["Feature 1", "Feature 2"]
+    }
   ],
   "limitations": [
     "Limitation 1", "Limitation 2"
@@ -502,45 +519,9 @@ Format your response as valid JSON with the following structure:
 }
 `;
       
-      // Call OpenAI via API
-      const model = this.env.OPENAI_MODEL || 'gpt-4';
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.env.OPENAI_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: model,
-          messages: [
-            {
-              role: 'system',
-              content: 'You are a product analyst specializing in feature analysis. Extract and categorize features from website content.'
-            },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          temperature: 0.3,
-          max_tokens: 2000
-        })
-      });
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`OpenAI API error: ${response.status} ${response.statusText} - ${errorText}`);
-      }
-      
-      const result = await response.json() as {
-        choices: Array<{
-          message: {
-            content: string;
-          };
-        }>;
-      };
-      
-      const content = result.choices[0].message.content;
+      // Call LLM using our helper function
+      const systemPrompt = 'You are a product analyst specializing in feature analysis. Extract and categorize features from website content.';
+      const content = await this.callLLM(systemPrompt, prompt, this.env.OPENAI_MODEL);
       
       // Parse the JSON response
       try {
@@ -548,108 +529,70 @@ Format your response as valid JSON with the following structure:
       } catch (parseError) {
         console.error(`[${taskId}] Error parsing features analysis:`, parseError);
         // Return the raw content if parsing fails
-        return { raw: content };
+        return {
+          raw_content: content,
+          parsing_error: true
+        };
       }
     } catch (error) {
       console.error(`[${taskId}] Error analyzing features:`, error);
-      return { error: error instanceof Error ? error.message : String(error) };
+      throw error;
     }
   }
   
   // Analyze pricing
   private async analyzePricing(reportData: any): Promise<any> {
     const taskId = await this.state.storage.get('taskId') as string;
-    console.log(`[${taskId}] Analyzing pricing`);
     
     try {
       // Prepare the prompt for OpenAI
       const prompt = `
-Analyze the following website content and extract all pricing information, plans, and monetization strategies:
+I need to analyze the pricing and monetization strategy based on the following website content:
 
-TITLE: ${reportData.metadata.title || 'N/A'}
-DESCRIPTION: ${reportData.metadata.description || 'N/A'}
-HEADINGS:
-${reportData.content.headings.h1.map((h: string) => `H1: ${h}`).join('\n')}
-${reportData.content.headings.h2.slice(0, 10).map((h: string) => `H2: ${h}`).join('\n')}
-${reportData.content.headings.h3.slice(0, 10).map((h: string) => `H3: ${h}`).join('\n')}
+Title: ${reportData.metadata.title || 'N/A'}
+Description: ${reportData.metadata.description || 'N/A'}
+URL: ${reportData.url || 'N/A'}
 
-LINKS (sample):
-${reportData.content.links.slice(0, 20).map((link: any) => `- ${link.text || 'N/A'}: ${link.url || 'N/A'}`).join('\n')}
+Content:
+${Array.isArray(reportData.content) 
+  ? reportData.content.join('\n\n') 
+  : reportData.content.text 
+    ? reportData.content.text.join('\n\n')
+    : JSON.stringify(reportData.content)
+}
 
 Based on this content, provide a comprehensive analysis of the pricing and monetization in JSON format:
-1. List all pricing tiers/plans
-2. Identify the pricing model (subscription, one-time, freemium, etc.)
-3. Note any free trials or money-back guarantees
-4. Compare pricing with industry standards (if possible to infer)
-5. Identify any discounts or special offers
 
-Format your response as valid JSON with the following structure:
 {
-  "pricing_model": "subscription/one-time/freemium/etc.",
-  "currency": "USD/EUR/etc.",
-  "plans": [
+  "pricing_models": [
     {
-      "name": "Plan name",
-      "price": "Price (e.g., $10/month)",
-      "billing_cycle": "monthly/annual/one-time",
-      "features": ["Feature 1", "Feature 2"],
-      "limitations": ["Limitation 1", "Limitation 2"]
+      "name": "Model name (e.g., Free, Basic, Premium)",
+      "price": "Price information",
+      "billing_cycle": "Monthly/Annual/One-time",
+      "features": ["Feature 1", "Feature 2"]
     }
   ],
-  "free_tier": {
-    "available": true/false,
-    "limitations": ["Limitation 1", "Limitation 2"]
+  "pricing_strategy": {
+    "type": "Freemium/Subscription/Usage-based/etc.",
+    "description": "Description of the overall pricing strategy"
   },
-  "free_trial": {
-    "available": true/false,
-    "duration": "Duration (e.g., 14 days)"
-  },
-  "special_offers": [
-    "Special offer 1", "Special offer 2"
+  "discounts": [
+    {
+      "type": "Discount type (e.g., Annual, Volume)",
+      "description": "Description of the discount"
+    }
   ],
+  "enterprise_options": {
+    "available": true/false,
+    "description": "Description of enterprise pricing if available"
+  },
   "pricing_analysis": "Brief analysis of the pricing strategy"
 }
 `;
       
-      // Call OpenAI via API
-      const model = this.env.OPENAI_MODEL || 'gpt-4';
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.env.OPENAI_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: model,
-          messages: [
-            {
-              role: 'system',
-              content: 'You are a pricing analyst specializing in SaaS and product pricing. Extract and analyze pricing information from website content.'
-            },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          temperature: 0.3,
-          max_tokens: 2000
-        })
-      });
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`OpenAI API error: ${response.status} ${response.statusText} - ${errorText}`);
-      }
-      
-      const result = await response.json() as {
-        choices: Array<{
-          message: {
-            content: string;
-          };
-        }>;
-      };
-      
-      const content = result.choices[0].message.content;
+      // Call LLM using our helper function
+      const systemPrompt = 'You are a pricing analyst specializing in SaaS and product pricing strategies. Extract and analyze pricing information from website content.';
+      const content = await this.callLLM(systemPrompt, prompt, this.env.OPENAI_MODEL);
       
       // Parse the JSON response
       try {
@@ -657,110 +600,73 @@ Format your response as valid JSON with the following structure:
       } catch (parseError) {
         console.error(`[${taskId}] Error parsing pricing analysis:`, parseError);
         // Return the raw content if parsing fails
-        return { raw: content };
+        return {
+          raw_content: content,
+          parsing_error: true
+        };
       }
     } catch (error) {
       console.error(`[${taskId}] Error analyzing pricing:`, error);
-      return { error: error instanceof Error ? error.message : String(error) };
+      throw error;
     }
   }
   
   // Analyze customers
   private async analyzeCustomers(reportData: any): Promise<any> {
     const taskId = await this.state.storage.get('taskId') as string;
-    console.log(`[${taskId}] Analyzing customers`);
     
     try {
       // Prepare the prompt for OpenAI
       const prompt = `
-Analyze the following website content and extract information about the target customers, user personas, and market positioning:
+I need to analyze the target customers and market positioning based on the following website content:
 
-TITLE: ${reportData.metadata.title || 'N/A'}
-DESCRIPTION: ${reportData.metadata.description || 'N/A'}
-HEADINGS:
-${reportData.content.headings.h1.map((h: string) => `H1: ${h}`).join('\n')}
-${reportData.content.headings.h2.slice(0, 10).map((h: string) => `H2: ${h}`).join('\n')}
-${reportData.content.headings.h3.slice(0, 10).map((h: string) => `H3: ${h}`).join('\n')}
+Title: ${reportData.metadata.title || 'N/A'}
+Description: ${reportData.metadata.description || 'N/A'}
+URL: ${reportData.url || 'N/A'}
 
-LINKS (sample):
-${reportData.content.links.slice(0, 20).map((link: any) => `- ${link.text || 'N/A'}: ${link.url || 'N/A'}`).join('\n')}
+Content:
+${Array.isArray(reportData.content) 
+  ? reportData.content.join('\n\n') 
+  : reportData.content.text 
+    ? reportData.content.text.join('\n\n')
+    : JSON.stringify(reportData.content)
+}
 
 Based on this content, provide a comprehensive analysis of the target customers and market positioning in JSON format:
-1. Identify the primary target audience and customer segments
-2. Create detailed user personas for the main customer types
-3. Analyze the company's market positioning and competitive stance
-4. Identify the main pain points the product/service addresses
-5. Note any customer testimonials or case studies mentioned
 
-Format your response as valid JSON with the following structure:
 {
-  "target_audience": {
-    "primary": "Description of primary audience",
-    "secondary": "Description of secondary audience",
-    "industries": ["Industry 1", "Industry 2"]
+  "target_customers": {
+    "industries": ["Industry 1", "Industry 2"],
+    "company_sizes": ["Size 1", "Size 2"],
+    "roles": ["Role 1", "Role 2"],
+    "needs": ["Need 1", "Need 2"]
   },
-  "user_personas": [
-    {
-      "name": "Persona name",
-      "role": "Job role/title",
-      "pain_points": ["Pain point 1", "Pain point 2"],
-      "goals": ["Goal 1", "Goal 2"],
-      "how_product_helps": "How the product addresses their needs"
-    }
-  ],
   "market_positioning": {
     "category": "Product/service category",
-    "differentiators": ["Differentiator 1", "Differentiator 2"],
-    "competitors": ["Competitor 1", "Competitor 2"]
+    "competitors": ["Competitor 1", "Competitor 2"],
+    "differentiators": ["Differentiator 1", "Differentiator 2"]
   },
-  "customer_evidence": {
-    "testimonials": ["Testimonial 1", "Testimonial 2"],
-    "case_studies": ["Case study 1", "Case study 2"],
-    "logos_displayed": ["Company 1", "Company 2"]
-  },
+  "use_cases": [
+    {
+      "title": "Use case title",
+      "description": "Description of the use case",
+      "target_audience": "Specific audience for this use case"
+    }
+  ],
+  "customer_testimonials": [
+    {
+      "company": "Company name (if mentioned)",
+      "quote": "Testimonial quote (if available)",
+      "industry": "Industry (if mentioned)"
+    }
+  ],
   "customer_analysis": "Brief analysis of how the company views and serves its customers"
 }
 `;
       
-      // Call OpenAI via API
-      const model = this.env.OPENAI_MODEL || 'gpt-4';
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.env.OPENAI_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: model,
-          messages: [
-            {
-              role: 'system',
-              content: 'You are a market research analyst specializing in customer segmentation and user personas. Extract and analyze customer information from website content.'
-            },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          temperature: 0.3,
-          max_tokens: 2000
-        })
-      });
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`OpenAI API error: ${response.status} ${response.statusText} - ${errorText}`);
-      }
-      
-      const result = await response.json() as {
-        choices: Array<{
-          message: {
-            content: string;
-          };
-        }>;
-      };
-      
-      const content = result.choices[0].message.content;
+      // Call LLM using our helper function
+      const systemPrompt = 'You are a market analyst specializing in customer segmentation and market positioning. Extract and analyze customer information from website content.';
+      const content = await this.callLLM(systemPrompt, prompt, this.env.OPENAI_MODEL);
       
       // Parse the JSON response
       try {
@@ -768,11 +674,56 @@ Format your response as valid JSON with the following structure:
       } catch (parseError) {
         console.error(`[${taskId}] Error parsing customers analysis:`, parseError);
         // Return the raw content if parsing fails
-        return { raw: content };
+        return {
+          raw_content: content,
+          parsing_error: true
+        };
       }
     } catch (error) {
       console.error(`[${taskId}] Error analyzing customers:`, error);
-      return { error: error instanceof Error ? error.message : String(error) };
+      throw error;
+    }
+  }
+  
+  /**
+   * Helper method to call LLM using LiteLLM
+   */
+  private async callLLM(systemPrompt: string, userPrompt: string, model?: string): Promise<string> {
+    const taskId = await this.state.storage.get('taskId') as string;
+    
+    try {
+      const llmModel = model || this.env.OPENAI_MODEL || 'gpt-4';
+      
+      if (!this.env.OPENAI_API_KEY) {
+        throw new Error('OpenAI API key is not configured');
+      }
+      
+      const response = await litellm.completion({
+        model: llmModel,
+        messages: [
+          {
+            role: 'system',
+            content: systemPrompt
+          },
+          {
+            role: 'user',
+            content: userPrompt
+          }
+        ],
+        temperature: 0.3,
+        max_tokens: 2000,
+        apiKey: this.env.OPENAI_API_KEY
+      });
+      
+      const content = response.choices[0]?.message?.content;
+      if (!content) {
+        throw new Error('No content returned from LiteLLM API');
+      }
+      
+      return content;
+    } catch (error) {
+      console.error(`[${taskId}] LiteLLM API error:`, error);
+      throw new Error(`LiteLLM API error: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 } 

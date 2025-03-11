@@ -1,6 +1,7 @@
 name = "research-agent"
 main = "src/index.ts"
-compatibility_date = "2024-03-10"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
 
 # Serve static assets from the public directory
 [site]
@@ -9,13 +10,14 @@ bucket = "./public"
 # Durable Object binding for task management
 [durable_objects]
 bindings = [
-  { name = "RESEARCH_TASK_DO", class_name = "ResearchTaskDO" }
+  { name = "RESEARCH_TASK_DO", class_name = "ResearchTaskDO" },
+  { name = "ANALYSIS_TASK_DO", class_name = "AnalysisTaskDO" }
 ]
 
 # Durable Object migrations
 [[migrations]]
 tag = "v1"
-new_classes = ["ResearchTaskDO"]
+new_classes = ["ResearchTaskDO", "AnalysisTaskDO"]
 
 # R2 bucket binding for storing reports
 [[r2_buckets]]
@@ -47,6 +49,8 @@ WORKER_URL = "http://localhost:8788"
 [env.analysis]
 name = "research-agent-analysis"
 main = "src/workers/detailed-analysis.ts"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
 
 # Durable Object binding for analysis task management
 [env.analysis.durable_objects]

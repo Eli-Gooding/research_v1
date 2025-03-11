@@ -20,6 +20,9 @@ import {
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
+// Import the AnalysisTaskDO class from the detailed-analysis.ts file
+import { AnalysisTaskDO } from './workers/detailed-analysis';
+
 // Define the environment interface with our bindings
 export interface Env {
   // Durable Object namespace for managing research tasks
@@ -1284,4 +1287,7 @@ export class ResearchTaskDO {
     
     return links;
   }
-} 
+}
+
+// Re-export it for Durable Object binding
+export { AnalysisTaskDO }; 

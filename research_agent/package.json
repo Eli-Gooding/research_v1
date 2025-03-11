@@ -9,7 +9,8 @@
     "deploy": "wrangler deploy",
     "format": "prettier --write '**/*.{js,ts,json}'",
     "test": "node test.js",
-    "set-openai-key": "wrangler secret put OPENAI_API_KEY"
+    "set-openai-key": "wrangler secret put OPENAI_API_KEY",
+    "start": "node run-workers.js"
   },
   "author": "",
   "license": "MIT",
@@ -22,6 +23,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.758.0",
     "@aws-sdk/s3-request-presigner": "^3.758.0",
+    "litellm": "^0.12.0",
     "openai": "^4.28.0"
   }
 }
