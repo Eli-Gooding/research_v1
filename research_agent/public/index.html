@@ -167,6 +167,39 @@
       margin-right: 5px;
       margin-bottom: 5px;
     }
+    .metrics-card {
+      background: white;
+      border: 1px solid #eee;
+      border-radius: 5px;
+      padding: 15px;
+      margin-bottom: 15px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+    .metrics-card h4 {
+      margin-top: 0;
+      color: #4285f4;
+      border-bottom: 1px solid #eee;
+      padding-bottom: 8px;
+      margin-bottom: 12px;
+    }
+    .metrics-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .metrics-table td {
+      padding: 6px 0;
+      border-bottom: 1px solid #f5f5f5;
+    }
+    .metrics-table td:first-child {
+      font-weight: 500;
+      color: #555;
+      width: 50%;
+    }
+    .metrics-table td:last-child {
+      text-align: right;
+      font-family: monospace;
+      color: #333;
+    }
   </style>
 </head>
 <body>
@@ -215,6 +248,7 @@
         <div class="tab active" data-tab="features">Features</div>
         <div class="tab" data-tab="pricing">Pricing</div>
         <div class="tab" data-tab="customers">Customers</div>
+        <div class="tab" data-tab="performance">Performance</div>
         <div class="tab" data-tab="raw">Raw Data</div>
       </div>
       
@@ -231,6 +265,11 @@
       <div class="tab-content" id="customers-tab">
         <h3>Customer Analysis</h3>
         <div id="customers-content"></div>
+      </div>
+      
+      <div class="tab-content" id="performance-tab">
+        <h3>Performance Metrics</h3>
+        <div id="performance-content"></div>
       </div>
       
       <div class="tab-content" id="raw-tab">
@@ -697,6 +736,98 @@
             customersContent.innerHTML = `<p class="error">Error: ${result.report.customers.error}</p>`;
           } else {
             customersContent.innerHTML = '<p>No customer data available</p>';
+          }
+          
+          // Display performance metrics
+          const performanceContent = document.getElementById('performance-content');
+          performanceContent.innerHTML = '';
+          
+          if (result.report.performance) {
+            performanceContent.innerHTML += `
+              <div class="metrics-card">
+                <h4>Analysis Timing</h4>
+                <table class="metrics-table">
+                  <tr>
+                    <td>Total Analysis Time:</td>
+                    <td>${(result.report.performance.total_time_ms / 1000).toFixed(2)} seconds</td>
+                  </tr>
+                  <tr>
+                    <td>Features Analysis Time:</td>
+                    <td>${(result.report.performance.features_analysis_time_ms / 1000).toFixed(2)} seconds</td>
+                  </tr>
+                  <tr>
+                    <td>Pricing Analysis Time:</td>
+                    <td>${(result.report.performance.pricing_analysis_time_ms / 1000).toFixed(2)} seconds</td>
+                  </tr>
+                  <tr>
+                    <td>Customers Analysis Time:</td>
+                    <td>${(result.report.performance.customers_analysis_time_ms / 1000).toFixed(2)} seconds</td>
+                  </tr>
+                </table>
+              </div>
+            `;
+            
+            // If token usage information is available
+            if (result.report.token_usage) {
+              performanceContent.innerHTML += `
+                <div class="metrics-card">
+                  <h4>Token Usage</h4>
+                  <table class="metrics-table">
+                    <tr>
+                      <td>Total Tokens:</td>
+                      <td>${result.report.token_usage.total_tokens || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                      <td>Prompt Tokens:</td>
+                      <td>${result.report.token_usage.prompt_tokens || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                      <td>Completion Tokens:</td>
+                      <td>${result.report.token_usage.completion_tokens || 'N/A'}</td>
+                    </tr>
+                  </table>
+                </div>
+              `;
+              
+              // If cost information is available
+              if (result.report.cost_estimate) {
+                performanceContent.innerHTML += `
+                  <div class="metrics-card">
+                    <h4>Cost Estimate</h4>
+                    <table class="metrics-table">
+                      <tr>
+                        <td>Total Cost:</td>
+                        <td>$${result.report.cost_estimate.total_cost?.toFixed(4) || 'N/A'}</td>
+                      </tr>
+                      <tr>
+                        <td>Prompt Cost:</td>
+                        <td>$${result.report.cost_estimate.prompt_cost?.toFixed(4) || 'N/A'}</td>
+                      </tr>
+                      <tr>
+                        <td>Completion Cost:</td>
+                        <td>$${result.report.cost_estimate.completion_cost?.toFixed(4) || 'N/A'}</td>
+                      </tr>
+                    </table>
+                  </div>
+                `;
+              } else {
+                performanceContent.innerHTML += `
+                  <div class="metrics-card">
+                    <h4>Cost Estimate</h4>
+                    <p>No cost information available</p>
+                  </div>
+                `;
+              }
+            } else {
+              performanceContent.innerHTML += `
+                <div class="metrics-card">
+                  <h4>Token Usage</h4>
+                  <p>No token usage information available</p>
+                </div>
+              `;
+            }
+          } else {
+            performanceContent.innerHTML = '<p>No performance data available</p>';
           }
         }
       } catch (error) {

@@ -415,6 +415,19 @@ export class AnalysisTaskDO {
       currentStage = 'report_generation';
       await this.addLogEntry('Generating final report', 'info');
       
+      // Get token usage and cost information
+      const tokenUsage = await this.state.storage.get('token_usage') as any || {
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        total_tokens: 0
+      };
+      
+      const costEstimate = await this.state.storage.get('cost_estimate') as any || {
+        prompt_cost: 0,
+        completion_cost: 0,
+        total_cost: 0
+      };
+      
       const detailedReport = {
         taskId,
         targetUrl,
@@ -432,7 +445,9 @@ export class AnalysisTaskDO {
           features_analysis_time_ms: featuresEndTime - featuresStartTime,
           pricing_analysis_time_ms: pricingEndTime - pricingStartTime,
           customers_analysis_time_ms: customersEndTime - customersStartTime
-        }
+        },
+        token_usage: tokenUsage,
+        cost_estimate: costEstimate
       };
       
       // Store the detailed report in R2
@@ -808,6 +823,7 @@ IMPORTANT: Your response MUST be valid JSON only, with no additional text before
       // Enhance the user prompt to emphasize JSON format
       const enhancedUserPrompt = `${userPrompt}\n\nRemember to respond with ONLY valid JSON. No explanations, no markdown formatting, no code blocks.`;
       
+      const startTime = Date.now();
       const response = await litellm.completion({
         model: llmModel,
         messages: [
@@ -824,11 +840,60 @@ IMPORTANT: Your response MUST be valid JSON only, with no additional text before
         max_tokens: 2000,
         apiKey: this.env.OPENAI_API_KEY
       });
+      const endTime = Date.now();
       
       const content = response.choices[0]?.message?.content;
       if (!content) {
         throw new Error('No content returned from LiteLLM API');
       }
+      
+      // Extract token usage information
+      const tokenUsage = response.usage || {
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        total_tokens: 0
+      };
+      
+      // Calculate cost based on token usage and pricing
+      const promptPrice = parseFloat(this.env.OPENAI_PROMPT_PRICE) || 0.03;
+      const completionPrice = parseFloat(this.env.OPENAI_COMPLETION_PRICE) || 0.06;
+      
+      const promptCost = (tokenUsage.prompt_tokens / 1000) * promptPrice;
+      const completionCost = (tokenUsage.completion_tokens / 1000) * completionPrice;
+      const totalCost = promptCost + completionCost;
+      
+      // Store token usage and cost information
+      const currentUsage = await this.state.storage.get('token_usage') as any || {
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        total_tokens: 0
+      };
+      
+      const currentCost = await this.state.storage.get('cost_estimate') as any || {
+        prompt_cost: 0,
+        completion_cost: 0,
+        total_cost: 0
+      };
+      
+      const updatedUsage = {
+        prompt_tokens: currentUsage.prompt_tokens + tokenUsage.prompt_tokens,
+        completion_tokens: currentUsage.completion_tokens + tokenUsage.completion_tokens,
+        total_tokens: currentUsage.total_tokens + tokenUsage.total_tokens
+      };
+      
+      const updatedCost = {
+        prompt_cost: currentCost.prompt_cost + promptCost,
+        completion_cost: currentCost.completion_cost + completionCost,
+        total_cost: currentCost.total_cost + totalCost
+      };
+      
+      await this.state.storage.put('token_usage', updatedUsage);
+      await this.state.storage.put('cost_estimate', updatedCost);
+      
+      // Log token usage and cost information
+      console.log(`[${taskId}] LLM call completed in ${endTime - startTime}ms`);
+      console.log(`[${taskId}] Token usage: ${tokenUsage.total_tokens} tokens (${tokenUsage.prompt_tokens} prompt, ${tokenUsage.completion_tokens} completion)`);
+      console.log(`[${taskId}] Estimated cost: $${totalCost.toFixed(6)} ($${promptCost.toFixed(6)} prompt, $${completionCost.toFixed(6)} completion)`);
       
       // Try to parse the content as JSON to validate it
       try {
