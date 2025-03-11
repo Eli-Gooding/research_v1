@@ -517,26 +517,53 @@ Based on this content, provide a comprehensive analysis of the product/service f
     "Limitation 1", "Limitation 2"
   ]
 }
+
+If no specific features can be identified from the content, provide a structured response with empty arrays or appropriate placeholder values.
+
+IMPORTANT: Your response MUST be valid JSON only, with no additional text before or after the JSON object.
 `;
       
       // Call LLM using our helper function
-      const systemPrompt = 'You are a product analyst specializing in feature analysis. Extract and categorize features from website content.';
+      const systemPrompt = 'You are a product analyst specializing in feature analysis. Extract and categorize features from website content. ALWAYS respond with valid JSON only, with no additional text before or after the JSON object.';
       const content = await this.callLLM(systemPrompt, prompt, this.env.OPENAI_MODEL);
       
       // Parse the JSON response
       try {
-        return JSON.parse(content);
+        // Try to extract JSON if the response contains text before or after the JSON object
+        let jsonContent = content.trim();
+        
+        // Look for JSON object start and end
+        const startIdx = jsonContent.indexOf('{');
+        const endIdx = jsonContent.lastIndexOf('}');
+        
+        if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+          jsonContent = jsonContent.substring(startIdx, endIdx + 1);
+        }
+        
+        const parsedData = JSON.parse(jsonContent);
+        return parsedData;
       } catch (parseError) {
         console.error(`[${taskId}] Error parsing features analysis:`, parseError);
-        // Return the raw content if parsing fails
+        // Return a structured fallback response if parsing fails
         return {
-          raw_content: content,
-          parsing_error: true
+          main_features: [],
+          unique_selling_points: [],
+          feature_categories: [],
+          limitations: ["No features could be extracted from the provided content"],
+          parsing_error: true,
+          raw_content: content
         };
       }
     } catch (error) {
       console.error(`[${taskId}] Error analyzing features:`, error);
-      throw error;
+      // Return a structured fallback response if analysis fails
+      return {
+        main_features: [],
+        unique_selling_points: [],
+        feature_categories: [],
+        limitations: ["An error occurred during feature analysis"],
+        error: error instanceof Error ? error.message : String(error)
+      };
     }
   }
   
@@ -547,7 +574,7 @@ Based on this content, provide a comprehensive analysis of the product/service f
     try {
       // Prepare the prompt for OpenAI
       const prompt = `
-I need to analyze the pricing and monetization strategy based on the following website content:
+I need to analyze the pricing model of a product or service based on the following website content:
 
 Title: ${reportData.metadata.title || 'N/A'}
 Description: ${reportData.metadata.description || 'N/A'}
@@ -561,53 +588,94 @@ ${Array.isArray(reportData.content)
     : JSON.stringify(reportData.content)
 }
 
-Based on this content, provide a comprehensive analysis of the pricing and monetization in JSON format:
+Based on this content, provide a comprehensive analysis of the pricing model in JSON format:
 
 {
-  "pricing_models": [
+  "pricing_model": "Subscription / One-time / Freemium / etc.",
+  "currency": "USD / EUR / etc.",
+  "plans": [
     {
-      "name": "Model name (e.g., Free, Basic, Premium)",
-      "price": "Price information",
-      "billing_cycle": "Monthly/Annual/One-time",
-      "features": ["Feature 1", "Feature 2"]
+      "name": "Plan name",
+      "price": "Price (e.g., $10/month)",
+      "billing_cycle": "Monthly / Annual / One-time",
+      "features": ["Feature 1", "Feature 2"],
+      "limitations": ["Limitation 1", "Limitation 2"],
+      "target_audience": "Who this plan is for"
     }
   ],
-  "pricing_strategy": {
-    "type": "Freemium/Subscription/Usage-based/etc.",
-    "description": "Description of the overall pricing strategy"
-  },
-  "discounts": [
-    {
-      "type": "Discount type (e.g., Annual, Volume)",
-      "description": "Description of the discount"
-    }
-  ],
-  "enterprise_options": {
+  "free_trial": {
     "available": true/false,
-    "description": "Description of enterprise pricing if available"
+    "duration": "Duration of free trial if available"
   },
-  "pricing_analysis": "Brief analysis of the pricing strategy"
+  "enterprise_option": {
+    "available": true/false,
+    "contact_info": "How to contact for enterprise pricing if available"
+  },
+  "pricing_transparency": "High / Medium / Low - assessment of how transparent the pricing is"
 }
+
+If no specific pricing information can be identified from the content, provide a structured response with empty arrays or appropriate placeholder values.
+
+IMPORTANT: Your response MUST be valid JSON only, with no additional text before or after the JSON object.
 `;
       
       // Call LLM using our helper function
-      const systemPrompt = 'You are a pricing analyst specializing in SaaS and product pricing strategies. Extract and analyze pricing information from website content.';
+      const systemPrompt = 'You are a pricing analyst specializing in business models. Extract and categorize pricing information from website content. ALWAYS respond with valid JSON only, with no additional text before or after the JSON object.';
       const content = await this.callLLM(systemPrompt, prompt, this.env.OPENAI_MODEL);
       
       // Parse the JSON response
       try {
-        return JSON.parse(content);
+        // Try to extract JSON if the response contains text before or after the JSON object
+        let jsonContent = content.trim();
+        
+        // Look for JSON object start and end
+        const startIdx = jsonContent.indexOf('{');
+        const endIdx = jsonContent.lastIndexOf('}');
+        
+        if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+          jsonContent = jsonContent.substring(startIdx, endIdx + 1);
+        }
+        
+        const parsedData = JSON.parse(jsonContent);
+        return parsedData;
       } catch (parseError) {
         console.error(`[${taskId}] Error parsing pricing analysis:`, parseError);
-        // Return the raw content if parsing fails
+        // Return a structured fallback response if parsing fails
         return {
-          raw_content: content,
-          parsing_error: true
+          pricing_model: "Unknown",
+          currency: "Unknown",
+          plans: [],
+          free_trial: {
+            available: false,
+            duration: "Unknown"
+          },
+          enterprise_option: {
+            available: false,
+            contact_info: "Unknown"
+          },
+          pricing_transparency: "Low",
+          parsing_error: true,
+          raw_content: content
         };
       }
     } catch (error) {
       console.error(`[${taskId}] Error analyzing pricing:`, error);
-      throw error;
+      // Return a structured fallback response if analysis fails
+      return {
+        pricing_model: "Unknown",
+        currency: "Unknown",
+        plans: [],
+        free_trial: {
+          available: false,
+          duration: "Unknown"
+        },
+        enterprise_option: {
+          available: false,
+          contact_info: "Unknown"
+        },
+        pricing_transparency: "Low",
+        error: error instanceof Error ? error.message : String(error)
+      };
     }
   }
   
@@ -635,53 +703,89 @@ ${Array.isArray(reportData.content)
 Based on this content, provide a comprehensive analysis of the target customers and market positioning in JSON format:
 
 {
-  "target_customers": {
-    "industries": ["Industry 1", "Industry 2"],
-    "company_sizes": ["Size 1", "Size 2"],
-    "roles": ["Role 1", "Role 2"],
-    "needs": ["Need 1", "Need 2"]
-  },
-  "market_positioning": {
-    "category": "Product/service category",
-    "competitors": ["Competitor 1", "Competitor 2"],
-    "differentiators": ["Differentiator 1", "Differentiator 2"]
-  },
-  "use_cases": [
+  "target_segments": [
     {
-      "title": "Use case title",
-      "description": "Description of the use case",
-      "target_audience": "Specific audience for this use case"
+      "segment": "Segment name (e.g., Small Businesses, Enterprise, etc.)",
+      "description": "Description of this customer segment",
+      "needs": ["Need 1", "Need 2"],
+      "pain_points": ["Pain point 1", "Pain point 2"]
     }
   ],
+  "industries": ["Industry 1", "Industry 2"],
+  "company_size": ["Size 1 (e.g., SMB)", "Size 2 (e.g., Enterprise)"],
+  "geographic_focus": ["Region 1", "Region 2"],
   "customer_testimonials": [
     {
-      "company": "Company name (if mentioned)",
-      "quote": "Testimonial quote (if available)",
-      "industry": "Industry (if mentioned)"
+      "company": "Company name if mentioned",
+      "quote": "Testimonial quote if available",
+      "industry": "Industry of the customer if mentioned"
     }
   ],
-  "customer_analysis": "Brief analysis of how the company views and serves its customers"
+  "market_positioning": {
+    "competitors": ["Competitor 1", "Competitor 2"],
+    "differentiators": ["Differentiator 1", "Differentiator 2"],
+    "value_proposition": "Overall value proposition"
+  }
 }
+
+If no specific customer information can be identified from the content, provide a structured response with empty arrays or appropriate placeholder values.
+
+IMPORTANT: Your response MUST be valid JSON only, with no additional text before or after the JSON object.
 `;
       
       // Call LLM using our helper function
-      const systemPrompt = 'You are a market analyst specializing in customer segmentation and market positioning. Extract and analyze customer information from website content.';
+      const systemPrompt = 'You are a market analyst specializing in customer segmentation and market positioning. Extract and categorize customer information from website content. ALWAYS respond with valid JSON only, with no additional text before or after the JSON object.';
       const content = await this.callLLM(systemPrompt, prompt, this.env.OPENAI_MODEL);
       
       // Parse the JSON response
       try {
-        return JSON.parse(content);
+        // Try to extract JSON if the response contains text before or after the JSON object
+        let jsonContent = content.trim();
+        
+        // Look for JSON object start and end
+        const startIdx = jsonContent.indexOf('{');
+        const endIdx = jsonContent.lastIndexOf('}');
+        
+        if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+          jsonContent = jsonContent.substring(startIdx, endIdx + 1);
+        }
+        
+        const parsedData = JSON.parse(jsonContent);
+        return parsedData;
       } catch (parseError) {
         console.error(`[${taskId}] Error parsing customers analysis:`, parseError);
-        // Return the raw content if parsing fails
+        // Return a structured fallback response if parsing fails
         return {
-          raw_content: content,
-          parsing_error: true
+          target_segments: [],
+          industries: [],
+          company_size: [],
+          geographic_focus: [],
+          customer_testimonials: [],
+          market_positioning: {
+            competitors: [],
+            differentiators: [],
+            value_proposition: "No clear value proposition could be identified"
+          },
+          parsing_error: true,
+          raw_content: content
         };
       }
     } catch (error) {
       console.error(`[${taskId}] Error analyzing customers:`, error);
-      throw error;
+      // Return a structured fallback response if analysis fails
+      return {
+        target_segments: [],
+        industries: [],
+        company_size: [],
+        geographic_focus: [],
+        customer_testimonials: [],
+        market_positioning: {
+          competitors: [],
+          differentiators: [],
+          value_proposition: "An error occurred during customer analysis"
+        },
+        error: error instanceof Error ? error.message : String(error)
+      };
     }
   }
   
@@ -698,16 +802,22 @@ Based on this content, provide a comprehensive analysis of the target customers 
         throw new Error('OpenAI API key is not configured');
       }
       
+      // Enhance the system prompt to ensure JSON output
+      const enhancedSystemPrompt = `${systemPrompt}\n\nIMPORTANT: You MUST respond with valid, properly formatted JSON only. Do not include any explanatory text, markdown formatting, or code blocks. Your entire response should be parseable as JSON.`;
+      
+      // Enhance the user prompt to emphasize JSON format
+      const enhancedUserPrompt = `${userPrompt}\n\nRemember to respond with ONLY valid JSON. No explanations, no markdown formatting, no code blocks.`;
+      
       const response = await litellm.completion({
         model: llmModel,
         messages: [
           {
             role: 'system',
-            content: systemPrompt
+            content: enhancedSystemPrompt
           },
           {
             role: 'user',
-            content: userPrompt
+            content: enhancedUserPrompt
           }
         ],
         temperature: 0.3,
@@ -720,7 +830,35 @@ Based on this content, provide a comprehensive analysis of the target customers 
         throw new Error('No content returned from LiteLLM API');
       }
       
-      return content;
+      // Try to parse the content as JSON to validate it
+      try {
+        JSON.parse(content);
+        return content;
+      } catch (parseError) {
+        console.error(`[${taskId}] LiteLLM returned invalid JSON, attempting to fix...`);
+        
+        // If the response isn't valid JSON, try to extract JSON from it
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const extractedJson = jsonMatch[0];
+          // Validate the extracted JSON
+          try {
+            JSON.parse(extractedJson);
+            return extractedJson;
+          } catch (e) {
+            // If extraction failed, return a fallback JSON
+            console.error(`[${taskId}] Failed to extract valid JSON from response`);
+          }
+        }
+        
+        // Create a fallback JSON response
+        const fallbackJson = JSON.stringify({
+          error: "Failed to parse LLM response as JSON",
+          raw_content: content
+        });
+        
+        return fallbackJson;
+      }
     } catch (error) {
       console.error(`[${taskId}] LiteLLM API error:`, error);
       throw new Error(`LiteLLM API error: ${error instanceof Error ? error.message : String(error)}`);

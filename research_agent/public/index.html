@@ -85,13 +85,53 @@
     .feature-card {
       background: white;
       border: 1px solid #eee;
-      border-radius: 4px;
-      padding: 10px;
-      margin-bottom: 10px;
+      border-radius: 5px;
+      padding: 15px;
+      margin-bottom: 15px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     }
     .feature-card h4 {
       margin-top: 0;
+      color: #4285f4;
+    }
+    .feature-category {
+      margin-bottom: 20px;
+    }
+    .feature-category h5 {
+      color: #333;
       margin-bottom: 5px;
+    }
+    .benefits, .technical-details {
+      margin-top: 10px;
+      padding-left: 10px;
+      border-left: 3px solid #f0f0f0;
+    }
+    .benefits h5, .technical-details h5 {
+      margin-top: 0;
+      margin-bottom: 5px;
+      color: #666;
+      font-size: 14px;
+    }
+    .usp-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 15px;
+      margin-bottom: 20px;
+    }
+    .usp-card {
+      flex: 1 1 300px;
+      background: #f5f9ff;
+      border-radius: 5px;
+      padding: 15px;
+      border-left: 3px solid #4285f4;
+    }
+    .usp-card h5 {
+      margin-top: 0;
+      color: #4285f4;
+    }
+    .limitations-list li {
+      margin-bottom: 8px;
+      color: #666;
     }
     .feature-card.highlighted {
       border-left: 4px solid #4285f4;
@@ -330,39 +370,54 @@
           const featuresContent = document.getElementById('features-content');
           featuresContent.innerHTML = '';
           
-          if (result.report.features && result.report.features.core_features) {
-            // Core features
-            featuresContent.innerHTML += '<h4>Core Features</h4>';
-            result.report.features.core_features.forEach(feature => {
-              featuresContent.innerHTML += `
-                <div class="feature-card ${feature.highlighted ? 'highlighted' : ''}">
-                  <h4>${feature.name}</h4>
-                  <p>${feature.description}</p>
-                </div>
-              `;
-            });
-            
-            // Advanced features
-            if (result.report.features.advanced_features && result.report.features.advanced_features.length > 0) {
-              featuresContent.innerHTML += '<h4>Advanced Features</h4>';
-              result.report.features.advanced_features.forEach(feature => {
+          if (result.report.features) {
+            // Main features
+            if (result.report.features.main_features && result.report.features.main_features.length > 0) {
+              featuresContent.innerHTML += '<h4>Main Features</h4>';
+              result.report.features.main_features.forEach(feature => {
+                let benefitsHtml = '';
+                if (feature.benefits && feature.benefits.length > 0) {
+                  benefitsHtml = `
+                    <div class="benefits">
+                      <h5>Benefits:</h5>
+                      <ul>
+                        ${feature.benefits.map(benefit => `<li>${benefit}</li>`).join('')}
+                      </ul>
+                    </div>
+                  `;
+                }
+                
+                let technicalDetailsHtml = '';
+                if (feature.technical_details) {
+                  technicalDetailsHtml = `
+                    <div class="technical-details">
+                      <h5>Technical Details:</h5>
+                      <p>${feature.technical_details}</p>
+                    </div>
+                  `;
+                }
+                
                 featuresContent.innerHTML += `
-                  <div class="feature-card ${feature.highlighted ? 'highlighted' : ''}">
+                  <div class="feature-card">
                     <h4>${feature.name}</h4>
                     <p>${feature.description}</p>
+                    ${benefitsHtml}
+                    ${technicalDetailsHtml}
                   </div>
                 `;
               });
             }
             
-            // Integrations
-            if (result.report.features.integrations && result.report.features.integrations.length > 0) {
-              featuresContent.innerHTML += '<h4>Integrations</h4>';
-              result.report.features.integrations.forEach(integration => {
+            // Feature categories
+            if (result.report.features.feature_categories && result.report.features.feature_categories.length > 0) {
+              featuresContent.innerHTML += '<h4>Feature Categories</h4>';
+              result.report.features.feature_categories.forEach(category => {
                 featuresContent.innerHTML += `
-                  <div class="feature-card">
-                    <h4>${integration.name}</h4>
-                    <p>${integration.description}</p>
+                  <div class="feature-category">
+                    <h5>${category.category}</h5>
+                    <ul>
+                      ${category.features.map(feature => `<li>${feature}</li>`).join('')}
+                    </ul>
                   </div>
                 `;
               });
@@ -371,21 +426,66 @@
             // Unique selling points
             if (result.report.features.unique_selling_points && result.report.features.unique_selling_points.length > 0) {
               featuresContent.innerHTML += '<h4>Unique Selling Points</h4>';
-              featuresContent.innerHTML += '<ul>';
+              featuresContent.innerHTML += '<div class="usp-container">';
               result.report.features.unique_selling_points.forEach(usp => {
-                featuresContent.innerHTML += `<li>${usp}</li>`;
+                featuresContent.innerHTML += `
+                  <div class="usp-card">
+                    <h5>${usp.point}</h5>
+                    <p>${usp.description}</p>
+                  </div>
+                `;
               });
-              featuresContent.innerHTML += '</ul>';
+              featuresContent.innerHTML += '</div>';
             }
             
             // Limitations
             if (result.report.features.limitations && result.report.features.limitations.length > 0) {
               featuresContent.innerHTML += '<h4>Limitations</h4>';
-              featuresContent.innerHTML += '<ul>';
+              featuresContent.innerHTML += '<ul class="limitations-list">';
               result.report.features.limitations.forEach(limitation => {
                 featuresContent.innerHTML += `<li>${limitation}</li>`;
               });
               featuresContent.innerHTML += '</ul>';
+            }
+            
+            // Fallback for old format
+            if (!result.report.features.main_features && result.report.features.core_features) {
+              // Core features
+              featuresContent.innerHTML += '<h4>Core Features</h4>';
+              result.report.features.core_features.forEach(feature => {
+                featuresContent.innerHTML += `
+                  <div class="feature-card ${feature.highlighted ? 'highlighted' : ''}">
+                    <h4>${feature.name}</h4>
+                    <p>${feature.description}</p>
+                  </div>
+                `;
+              });
+              
+              // Advanced features
+              if (result.report.features.advanced_features && result.report.features.advanced_features.length > 0) {
+                featuresContent.innerHTML += '<h4>Advanced Features</h4>';
+                result.report.features.advanced_features.forEach(feature => {
+                  featuresContent.innerHTML += `
+                    <div class="feature-card ${feature.highlighted ? 'highlighted' : ''}">
+                      <h4>${feature.name}</h4>
+                      <p>${feature.description}</p>
+                    </div>
+                  `;
+                });
+              }
+              
+              // Integrations
+              if (result.report.features.integrations && result.report.features.integrations.length > 0) {
+                featuresContent.innerHTML += '<h4>Integrations</h4>';
+                result.report.features.integrations.forEach(integration => {
+                  featuresContent.innerHTML += `
+                    <div class="feature-card">
+                      <h4>${integration.name}</h4>
+                      <p>${integration.description}</p>
+                    </div>
+                  `;
+                });
+              }
             }
           } else if (result.report.features && result.report.features.raw) {
             // Handle raw text response
