@@ -139,9 +139,9 @@
 <body>
   <h1>Research Agent - PartyKit Edition</h1>
   <p>Enter a URL to analyze and get detailed insights about the website.</p>
-
+  
   <div class="container">
-    <div class="card">
+  <div class="card">
       <h2>Submit URL</h2>
       <div class="form-group">
         <label for="url-input">URL to Analyze:</label>
@@ -149,8 +149,8 @@
       </div>
       <button id="submit-btn">Analyze Website</button>
       <div id="submit-status" class="status hidden"></div>
-    </div>
-
+  </div>
+  
     <div id="task-card" class="card hidden">
       <h2>Task Status</h2>
       <div id="task-info">
@@ -161,11 +161,11 @@
       </div>
       <div id="task-status-container" class="status info">
         Initializing task...
-      </div>
+  </div>
       <h3>Logs</h3>
       <div id="task-logs" class="logs"></div>
-    </div>
-
+  </div>
+  
     <div id="report-card" class="card hidden">
       <h2>Report</h2>
       <div class="tabs">
@@ -175,7 +175,7 @@
         <div class="tab" data-tab="customers">Customers</div>
         <div class="tab" data-tab="raw">Raw Data</div>
       </div>
-
+      
       <div id="summary-tab" class="tab-content active">
         <h3>Website Summary</h3>
         <div id="summary-content"></div>
@@ -186,26 +186,26 @@
         <div id="features-content"></div>
         <button id="analyze-features-btn" class="hidden">Analyze Features</button>
       </div>
-
+      
       <div id="pricing-tab" class="tab-content">
         <h3>Pricing Analysis</h3>
         <div id="pricing-content"></div>
         <button id="analyze-pricing-btn" class="hidden">Analyze Pricing</button>
       </div>
-
+      
       <div id="customers-tab" class="tab-content">
         <h3>Target Customers Analysis</h3>
         <div id="customers-content"></div>
         <button id="analyze-customers-btn" class="hidden">Analyze Customers</button>
       </div>
-
+      
       <div id="raw-tab" class="tab-content">
         <h3>Raw Data</h3>
         <pre id="raw-content"></pre>
       </div>
     </div>
   </div>
-
+  
   <script src="js/partykit-client.js"></script>
   <script>
     // Initialize the client
@@ -474,8 +474,8 @@
             customersContent.innerHTML = `<div>${analysisReport.customers.analysis.replace(/\n/g, '<br>')}</div>`;
           } else {
             customersContent.innerHTML = '<p>Customers analysis not available.</p>';
-          }
-        } catch (error) {
+        }
+      } catch (error) {
           console.error('Error loading analysis report:', error);
           
           // Re-enable analysis buttons

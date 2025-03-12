@@ -265,6 +265,13 @@
             </div>
             
             <button class="button" id="save-button">Save Report</button>
+            <button class="button" id="toggle-debug-button">Show Raw JSON</button>
+          </div>
+          
+          <!-- Debug section to show raw JSON -->
+          <div id="debug-section" style="display: none; margin-top: 20px;">
+            <h3>Raw JSON Response</h3>
+            <pre id="raw-json" style="background-color: #f5f5f5; padding: 10px; border-radius: 5px; overflow: auto; max-height: 300px; font-family: monospace; font-size: 12px;"></pre>
           </div>
         </div>
         
@@ -306,10 +313,12 @@
       const reportUrl = document.getElementById('report-url');
       const reportDate = document.getElementById('report-date');
       const saveButton = document.getElementById('save-button');
+      const toggleDebugButton = document.getElementById('toggle-debug-button');
       
       let currentTaskId = null;
       let statusCheckInterval = null;
       let apiBaseUrl = localStorage.getItem('apiBaseUrl') || 'http://localhost:8787';
+      let reportData = null; // Store the report data globally for debugging
       
       // Initialize API URL input
       apiUrlInput.value = apiBaseUrl;
@@ -497,8 +506,12 @@ This is a standalone collaborative editor powered by PartyKit. You can edit this
           clearInterval(statusCheckInterval);
         }
         
+        let checkCount = 0;
+        const maxChecks = 20; // Maximum number of status checks (20 checks * 2 seconds = 40 seconds)
+        
         statusCheckInterval = setInterval(async () => {
           try {
+            checkCount++;
             // Updated URL format to match the worker's expected format
             console.log(`Checking task status: /party/document/api?apiBaseUrl=${encodeURIComponent(apiBaseUrl)}&action=task-status&taskId=${taskId}`);
             
@@ -534,17 +547,55 @@ This is a standalone collaborative editor powered by PartyKit. You can edit this
               progressBar.style.width = '100%';
             } else if (taskData.status === 'processing' || taskData.status === 'analyzing') {
               // Task in progress with more specific status
-              const progress = taskData.progress || 60;
-              statusMessage.textContent = `Status: ${taskData.status} - ${taskData.message || 'Processing...'}`;
+              const progress = taskData.progress || Math.min(30 + (checkCount * 3), 95);
+              statusMessage.textContent = `Status: ${taskData.status} - ${taskData.message || 'Processing...'} (${checkCount}/${maxChecks})`;
               progressBar.style.width = `${progress}%`;
+            } else if (taskData.status === 'unknown') {
+              // Worker returns unknown status - this might mean it's still processing
+              // Calculate progress based on check count - slower progression for longer wait time
+              const progress = Math.min(30 + (checkCount * 3), 95);
+              statusMessage.textContent = `Status: Processing... (${checkCount}/${maxChecks})`;
+              progressBar.style.width = `${progress}%`;
+              
+              // If we've checked enough times, assume it's done
+              if (checkCount >= maxChecks) {
+                clearInterval(statusCheckInterval);
+                statusMessage.textContent = 'Assuming report is ready, attempting to load...';
+                progressBar.style.width = '100%';
+                
+                // Try to load the report
+                loadReport(taskId);
+              }
             } else {
               // Task still in progress with generic status
-              statusMessage.textContent = `Status: ${taskData.status || 'In progress'}`;
-              progressBar.style.width = '60%';
+              // Calculate progress based on check count
+              const progress = Math.min(30 + (checkCount * 5), 95);
+              statusMessage.textContent = `Status: ${taskData.status || 'In progress'} (${checkCount}/${maxChecks})`;
+              progressBar.style.width = `${progress}%`;
+              
+              // If we've checked enough times, assume it's done
+              if (checkCount >= maxChecks) {
+                clearInterval(statusCheckInterval);
+                statusMessage.textContent = 'Assuming report is ready, attempting to load...';
+                progressBar.style.width = '100%';
+                
+                // Try to load the report
+                loadReport(taskId);
+              }
             }
           } catch (error) {
             console.error('Error checking task status:', error);
             statusMessage.textContent = `Error checking task status: ${error.message || 'Unknown error'}`;
+            
+            // If we've checked enough times, try to load the report anyway
+            if (checkCount >= maxChecks) {
+              clearInterval(statusCheckInterval);
+              statusMessage.textContent = 'Assuming report is ready despite errors, attempting to load...';
+              progressBar.style.width = '100%';
+              
+              // Try to load the report
+              loadReport(taskId);
+            }
           }
         }, 2000); // Check every 2 seconds
       }
@@ -552,100 +603,340 @@ This is a standalone collaborative editor powered by PartyKit. You can edit this
       // Function to load the report
       async function loadReport(taskId) {
         try {
-          // Updated URL format to match the worker's expected format
-          console.log(`Loading report: /party/document/api?apiBaseUrl=${encodeURIComponent(apiBaseUrl)}&action=report&reportId=${taskId}`);
+          // First try the standard report endpoint with the detailed report ID format
+          console.log(`Loading report: /party/document/api?apiBaseUrl=${encodeURIComponent(apiBaseUrl)}&action=report&reportId=${taskId}-detailed`);
           
-          const response = await fetch(`/party/document/api?apiBaseUrl=${encodeURIComponent(apiBaseUrl)}&action=report&reportId=${taskId}`);
+          const response = await fetch(`/party/document/api?apiBaseUrl=${encodeURIComponent(apiBaseUrl)}&action=report&reportId=${taskId}-detailed`);
           
-          console.log(`Report response: ${response.status}`);
+          console.log(`Report response status: ${response.status}`);
           const responseText = await response.text();
           console.log(`Report response text: ${responseText.substring(0, 100)}${responseText.length > 100 ? '...' : ''}`);
           
           // Try to parse the response as JSON
-          let reportData;
           try {
+            // Store the report data globally for debugging
             reportData = JSON.parse(responseText);
+            console.log('Successfully parsed report response as JSON:', reportData.status || 'No status field');
+            
+            // Check if we got a valid report or an error response
+            if (reportData.status === 'error' || !reportData.url) {
+              console.warn('Received error response or invalid report data:', reportData);
+              
+              // Try to access the report directly from R2 with the detailed suffix
+              console.log(`Trying direct R2 access: /party/document/api?apiBaseUrl=${encodeURIComponent(apiBaseUrl)}&action=direct-report&reportId=${taskId}-detailed`);
+              
+              const directResponse = await fetch(`/party/document/api?apiBaseUrl=${encodeURIComponent(apiBaseUrl)}&action=direct-report&reportId=${taskId}-detailed`);
+              console.log(`Direct R2 access response status: ${directResponse.status}`);
+              
+              if (directResponse.ok) {
+                const directResponseText = await directResponse.text();
+                console.log(`Direct report response text: ${directResponseText.substring(0, 100)}${directResponseText.length > 100 ? '...' : ''}`);
+                
+                try {
+                  const directReportData = JSON.parse(directResponseText);
+                  console.log('Successfully parsed direct R2 access response as JSON');
+                  
+                  if (directReportData.url || directReportData.content || directReportData.features) {
+                    reportData = directReportData; // Update global reportData
+                    console.log('Successfully loaded report from direct R2 access');
+                  } else {
+                    console.warn('Direct report data is incomplete:', directReportData);
+                    // Try to enhance the report data with what we have
+                    reportData = {
+                      ...directReportData,
+                      url: urlInput.value || taskId,
+                      timestamp: directReportData.timestamp || new Date().toISOString()
+                    };
+                  }
+                } catch (directParseError) {
+                  console.error('Error parsing direct report response:', directParseError);
+                  // Try the original report ID without the -detailed suffix
+                  return loadOriginalReport(taskId);
+                }
+              } else {
+                console.error('Failed to access report directly from R2:', directResponse.status);
+                
+                // Try a different format for the detailed report
+                console.log(`Trying direct R2 access with alternative format: /party/document/api?apiBaseUrl=${encodeURIComponent(apiBaseUrl)}&action=direct-report&reportId=${taskId}-detailed.json`);
+                
+                const altResponse = await fetch(`/party/document/api?apiBaseUrl=${encodeURIComponent(apiBaseUrl)}&action=direct-report&reportId=${taskId}-detailed.json`);
+                console.log(`Alternative format response status: ${altResponse.status}`);
+                
+                if (altResponse.ok) {
+                  const altResponseText = await altResponse.text();
+                  console.log(`Alternative format response text: ${altResponseText.substring(0, 100)}${altResponseText.length > 100 ? '...' : ''}`);
+                  
+                  try {
+                    const altReportData = JSON.parse(altResponseText);
+                    console.log('Successfully parsed alternative format response as JSON');
+                    
+                    if (altReportData.url || altReportData.content || altReportData.features) {
+                      reportData = altReportData; // Update global reportData
+                      console.log('Successfully loaded report from alternative format');
+                    } else {
+                      console.warn('Alternative format report data is incomplete:', altReportData);
+                      // Try the original report ID without the -detailed suffix
+                      return loadOriginalReport(taskId);
+                    }
+                  } catch (altParseError) {
+                    console.error('Error parsing alternative format response:', altParseError);
+                    // Try the original report ID without the -detailed suffix
+                    return loadOriginalReport(taskId);
+                  }
+                } else {
+                  console.error('Failed to access report with alternative format:', altResponse.status);
+                  // Try the original report ID without the -detailed suffix
+                  return loadOriginalReport(taskId);
+                }
+              }
+            }
           } catch (parseError) {
             console.error('Error parsing report response as JSON:', parseError);
-            statusMessage.textContent = `Error: Failed to parse report response as JSON. Raw response: ${responseText.substring(0, 100)}${responseText.length > 100 ? '...' : ''}`;
+            statusMessage.textContent = `Error: Failed to parse report response as JSON. Trying direct access...`;
             
-            // Show editor section with error message
-            document.getElementById('editor').value = `# Error Loading Report\n\nThere was an error parsing the report data as JSON.\n\nRaw response: ${responseText.substring(0, 500)}${responseText.length > 500 ? '...' : ''}`;
-            
-            return;
-          }
-          
-          // Update report info
-          reportUrl.textContent = reportData.url || '-';
-          reportDate.textContent = new Date(reportData.timestamp).toLocaleString() || '-';
-          
-          // Format report content for the editor
-          let reportContent = '';
-          
-          if (reportData.title) {
-            reportContent += `# ${reportData.title}\n\n`;
-          }
-          
-          if (reportData.description) {
-            reportContent += `${reportData.description}\n\n`;
-          }
-          
-          reportContent += `## Website Analysis Report\n\n`;
-          reportContent += `URL: ${reportData.url}\n`;
-          reportContent += `Analyzed: ${new Date(reportData.timestamp).toLocaleString()}\n\n`;
-          
-          if (reportData.metadata) {
-            reportContent += `## Metadata\n\n`;
-            
-            if (reportData.metadata.title) {
-              reportContent += `Title: ${reportData.metadata.title}\n`;
-            }
-            
-            if (reportData.metadata.description) {
-              reportContent += `Description: ${reportData.metadata.description}\n`;
-            }
-            
-            if (reportData.metadata.keywords) {
-              reportContent += `Keywords: ${reportData.metadata.keywords}\n`;
-            }
-            
-            reportContent += `\n`;
-          }
-          
-          // Add any analysis data if available
-          if (reportData.analysis) {
-            reportContent += `## Analysis\n\n`;
-            
-            if (reportData.analysis.features) {
-              reportContent += `### Features\n\n${reportData.analysis.features}\n\n`;
-            }
-            
-            if (reportData.analysis.pricing) {
-              reportContent += `### Pricing\n\n${reportData.analysis.pricing}\n\n`;
-            }
-            
-            if (reportData.analysis.customers) {
-              reportContent += `### Target Customers\n\n${reportData.analysis.customers}\n\n`;
+            // Try to access the report directly from R2 with the detailed suffix
+            try {
+              console.log(`Trying direct R2 access after parse error: /party/document/api?apiBaseUrl=${encodeURIComponent(apiBaseUrl)}&action=direct-report&reportId=${taskId}-detailed`);
+              
+              const directResponse = await fetch(`/party/document/api?apiBaseUrl=${encodeURIComponent(apiBaseUrl)}&action=direct-report&reportId=${taskId}-detailed`);
+              console.log(`Direct R2 access response status after parse error: ${directResponse.status}`);
+              
+              if (directResponse.ok) {
+                const directResponseText = await directResponse.text();
+                console.log(`Direct R2 access response text after parse error: ${directResponseText.substring(0, 100)}${directResponseText.length > 100 ? '...' : ''}`);
+                
+                try {
+                  reportData = JSON.parse(directResponseText); // Update global reportData
+                  console.log('Successfully loaded report from direct R2 access after initial parse error');
+                } catch (directParseError) {
+                  console.error('Error parsing direct report response:', directParseError);
+                  // Try the original report ID without the -detailed suffix
+                  return loadOriginalReport(taskId);
+                }
+              } else {
+                console.error('Failed to access report directly from R2 after initial parse error:', directResponse.status);
+                // Try the original report ID without the -detailed suffix
+                return loadOriginalReport(taskId);
+              }
+            } catch (directAccessError) {
+              console.error('Error accessing report directly from R2:', directAccessError);
+              // Try the original report ID without the -detailed suffix
+              return loadOriginalReport(taskId);
             }
           }
           
-          // Set the editor content directly first
-          document.getElementById('editor').value = reportContent;
+          // Log the report data for debugging
+          console.log('Final report data:', JSON.stringify(reportData, null, 2));
           
-          // Then try to save to collaborative document
-          try {
-            saveReportToCollaborativeDoc(reportContent);
-          } catch (error) {
-            console.warn('Failed to save to collaborative document, but report is still viewable:', error);
-          }
-          
+          // Format and display the report
+          displayReport(reportData);
         } catch (error) {
           console.error('Error loading report:', error);
-          statusMessage.textContent = 'Error: Failed to load report. Please check the API URL and try again.';
+          statusMessage.textContent = 'Error: Failed to load report. Creating fallback report.';
           
-          // Show editor section with error message
-          document.getElementById('editor').value = `# Error Loading Report\n\nThere was an error loading the report.\n\nError: ${error.message || 'Unknown error'}`;
+          // Create a fallback report based on the task ID
+          reportData = createFallbackReport(taskId);
+          
+          // Format and display the fallback report
+          displayReport(reportData);
         }
+      }
+      
+      // Function to try loading the original report (without -detailed suffix)
+      async function loadOriginalReport(taskId) {
+        try {
+          console.log(`Trying original report ID: /party/document/api?apiBaseUrl=${encodeURIComponent(apiBaseUrl)}&action=report&reportId=${taskId}`);
+          
+          const response = await fetch(`/party/document/api?apiBaseUrl=${encodeURIComponent(apiBaseUrl)}&action=report&reportId=${taskId}`);
+          console.log(`Original report response status: ${response.status}`);
+          
+          if (response.ok) {
+            const responseText = await response.text();
+            console.log(`Original report response text: ${responseText.substring(0, 100)}${responseText.length > 100 ? '...' : ''}`);
+            
+            try {
+              reportData = JSON.parse(responseText);
+              console.log('Successfully loaded original report');
+              
+              // Format and display the report
+              displayReport(reportData);
+            } catch (parseError) {
+              console.error('Error parsing original report response:', parseError);
+              
+              // Try direct access to R2 with the original taskId (no -detailed suffix)
+              console.log(`Trying direct R2 access with original taskId: /party/document/api?apiBaseUrl=${encodeURIComponent(apiBaseUrl)}&action=direct-report&reportId=${taskId}`);
+              
+              const directResponse = await fetch(`/party/document/api?apiBaseUrl=${encodeURIComponent(apiBaseUrl)}&action=direct-report&reportId=${taskId}`);
+              console.log(`Direct R2 access response status: ${directResponse.status}`);
+              
+              if (directResponse.ok) {
+                const directResponseText = await directResponse.text();
+                console.log(`Direct R2 access response text: ${directResponseText.substring(0, 100)}${directResponseText.length > 100 ? '...' : ''}`);
+                
+                try {
+                  reportData = JSON.parse(directResponseText);
+                  console.log('Successfully loaded report from direct R2 access with original taskId');
+                  displayReport(reportData);
+                } catch (directParseError) {
+                  console.error('Error parsing direct R2 access response:', directParseError);
+                  reportData = createFallbackReport(taskId);
+                  displayReport(reportData);
+                }
+              } else {
+                console.error('Failed to access report directly from R2 with original taskId:', directResponse.status);
+                reportData = createFallbackReport(taskId);
+                displayReport(reportData);
+              }
+            }
+          } else {
+            console.error('Failed to access original report:', response.status);
+            
+            // Try direct access to R2 with the original taskId (no -detailed suffix)
+            console.log(`Trying direct R2 access with original taskId: /party/document/api?apiBaseUrl=${encodeURIComponent(apiBaseUrl)}&action=direct-report&reportId=${taskId}`);
+            
+            const directResponse = await fetch(`/party/document/api?apiBaseUrl=${encodeURIComponent(apiBaseUrl)}&action=direct-report&reportId=${taskId}`);
+            console.log(`Direct R2 access response status: ${directResponse.status}`);
+            
+            if (directResponse.ok) {
+              const directResponseText = await directResponse.text();
+              console.log(`Direct R2 access response text: ${directResponseText.substring(0, 100)}${directResponseText.length > 100 ? '...' : ''}`);
+              
+              try {
+                reportData = JSON.parse(directResponseText);
+                console.log('Successfully loaded report from direct R2 access with original taskId');
+                displayReport(reportData);
+              } catch (directParseError) {
+                console.error('Error parsing direct R2 access response:', directParseError);
+                reportData = createFallbackReport(taskId);
+                displayReport(reportData);
+              }
+            } else {
+              console.error('Failed to access report directly from R2 with original taskId:', directResponse.status);
+              reportData = createFallbackReport(taskId);
+              displayReport(reportData);
+            }
+          }
+        } catch (error) {
+          console.error('Error loading original report:', error);
+          reportData = createFallbackReport(taskId);
+          displayReport(reportData);
+        }
+      }
+      
+      // Function to display the report
+      function displayReport(reportData) {
+        // Update report info
+        reportUrl.textContent = reportData.url || reportData.targetUrl || reportData.basicInfo?.url || '-';
+        reportDate.textContent = new Date(reportData.timestamp || reportData.analyzedAt || Date.now()).toLocaleString() || '-';
+        
+        // Format report content for the editor
+        let reportContent = '';
+        
+        if (reportData.title || reportData.basicInfo?.title) {
+          reportContent += `# ${reportData.title || reportData.basicInfo?.title}\n\n`;
+        }
+        
+        if (reportData.description) {
+          reportContent += `${reportData.description}\n\n`;
+        }
+        
+        reportContent += `## Website Analysis Report\n\n`;
+        reportContent += `URL: ${reportData.url || reportData.targetUrl || reportData.basicInfo?.url || 'Unknown URL'}\n`;
+        reportContent += `Analyzed: ${new Date(reportData.timestamp || reportData.analyzedAt || Date.now()).toLocaleString()}\n\n`;
+        
+        // Helper function to format content that might be objects
+        const formatContent = (content) => {
+          if (typeof content === 'object' && content !== null) {
+            if (Array.isArray(content)) {
+              return content.map(item => {
+                if (typeof item === 'object' && item !== null) {
+                  return Object.entries(item)
+                    .map(([key, value]) => `**${key.charAt(0).toUpperCase() + key.slice(1)}**: ${formatContent(value)}`)
+                    .join('\n');
+                }
+                return item;
+              }).join('\n\n');
+            }
+            return Object.entries(content)
+              .map(([key, value]) => `**${key.charAt(0).toUpperCase() + key.slice(1)}**: ${formatContent(value)}`)
+              .join('\n\n');
+          }
+          return content;
+        };
+        
+        // Add features analysis if available
+        if (reportData.features) {
+          reportContent += `## Features Analysis\n\n${formatContent(reportData.features)}\n\n`;
+        }
+        
+        // Add pricing analysis if available
+        if (reportData.pricing) {
+          reportContent += `## Pricing Analysis\n\n${formatContent(reportData.pricing)}\n\n`;
+        }
+        
+        // Add customers analysis if available
+        if (reportData.customers) {
+          reportContent += `## Target Customers Analysis\n\n${formatContent(reportData.customers)}\n\n`;
+        }
+        
+        // Add content directly if available (from direct R2 access)
+        if (reportData.content && !reportData.features) {
+          reportContent += `## Content\n\n`;
+          // Format the content appropriately
+          if (typeof reportData.content === 'object') {
+            reportContent += formatContent(reportData.content);
+          } else {
+            reportContent += `${reportData.content}\n\n`;
+          }
+        }
+        
+        // Add metadata if available
+        if (reportData.metadata) {
+          reportContent += `## Metadata\n\n`;
+          reportContent += formatContent(reportData.metadata);
+          reportContent += `\n\n`;
+        }
+        
+        // Add performance metrics if available
+        if (reportData.performance) {
+          reportContent += `## Performance Metrics\n\n`;
+          reportContent += formatContent(reportData.performance);
+          reportContent += `\n\n`;
+        }
+        
+        // Set the editor content directly first
+        document.getElementById('editor').value = reportContent;
+        
+        // Then try to save to collaborative document
+        try {
+          saveReportToCollaborativeDoc(reportContent);
+        } catch (error) {
+          console.warn('Failed to save to collaborative document, but report is still viewable:', error);
+        }
+      }
+      
+      // Function to create a fallback report when the API fails
+      function createFallbackReport(taskId) {
+        // Extract the URL from the task ID if possible
+        let url = urlInput.value || 'https://example.com';
+        
+        // Create a basic report with the information we have
+        return {
+          url: url,
+          title: `Analysis Report for ${url}`,
+          description: `This is an automatically generated report for ${url}. The detailed analysis is still being processed.`,
+          timestamp: new Date().toISOString(),
+          metadata: {
+            title: `Website Analysis: ${url}`,
+            description: `Analysis of ${url} website content and features.`,
+            keywords: 'website, analysis, report'
+          },
+          analysis: {
+            features: 'The detailed feature analysis is still being processed. Please check back later or regenerate the report.',
+            pricing: 'Pricing information is not available in this preliminary report.',
+            customers: 'Target customer information is not available in this preliminary report.'
+          }
+        };
       }
       
       // Function to save report to collaborative document
@@ -726,6 +1017,25 @@ This is a standalone collaborative editor powered by PartyKit. You can edit this
         }
         
         saveReportToCollaborativeDoc(content);
+      });
+
+      // Toggle debug section
+      toggleDebugButton.addEventListener('click', () => {
+        const debugSection = document.getElementById('debug-section');
+        const rawJson = document.getElementById('raw-json');
+        
+        if (debugSection.style.display === 'none' || debugSection.style.display === '') {
+          debugSection.style.display = 'block';
+          if (reportData) {
+            rawJson.textContent = JSON.stringify(reportData, null, 2);
+          } else {
+            rawJson.textContent = 'No report data available yet. Generate a report first.';
+          }
+          toggleDebugButton.textContent = 'Hide Raw JSON';
+        } else {
+          debugSection.style.display = 'none';
+          toggleDebugButton.textContent = 'Show Raw JSON';
+        }
       });
     });
   </script>
