@@ -1,0 +1,7 @@
+---
+description: When unsure about the right way to use our packages, consult the attached docs
+globs: search_test/search_workers/*
+alwaysApply: false
+---
+For openai search, check: @https://platform.openai.com/docs/guides/tools-web-search?api-mode=responses
+For making sure our partykit works: @https://docs.partykit.io/

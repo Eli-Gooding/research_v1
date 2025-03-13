@@ -1,0 +1,41 @@
+{
+  "name": "company-research-agent",
+  "version": "1.0.0",
+  "description": "AI-powered distributed research agent for companies",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "dev:workers": "wrangler dev",
+    "dev:party": "partykit dev",
+    "dev:static": "npx http-server -p 3000 --cors",
+    "dev": "concurrently \"npm run dev:workers\" \"npm run dev:party\" \"npm run dev:static\"",
+    "deploy:workers": "wrangler deploy",
+    "deploy:party": "partykit deploy",
+    "deploy": "npm run deploy:workers && npm run deploy:party"
+  },
+  "keywords": [
+    "openai",
+    "search",
+    "research",
+    "web-search",
+    "company-research"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "node-fetch": "^3.3.2",
+    "openai": "^4.28.0",
+    "partykit": "latest",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "http-server": "^14.1.1",
+    "wrangler": "^3.33.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "private": true
+}

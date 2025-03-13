@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Company Research Agent</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body {
+      padding: 20px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+    }
+    .container {
+      max-width: 800px;
+    }
+    .card {
+      margin-bottom: 20px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    .status-badge {
+      font-size: 0.9rem;
+      padding: 0.35em 0.65em;
+    }
+    .progress {
+      height: 10px;
+    }
+    .category-item {
+      padding: 8px 12px;
+      margin-bottom: 8px;
+      border-radius: 4px;
+      background-color: #f8f9fa;
+    }
+    .category-item.completed {
+      background-color: #d1e7dd;
+    }
+    .category-item.in-progress {
+      background-color: #fff3cd;
+    }
+    .category-item.error {
+      background-color: #f8d7da;
+    }
+    #resultContainer {
+      white-space: pre-wrap;
+      font-family: 'Courier New', Courier, monospace;
+      background-color: #f8f9fa;
+      padding: 15px;
+      border-radius: 5px;
+      max-height: 500px;
+      overflow-y: auto;
+    }
+    .error-message {
+      color: #dc3545;
+      background-color: #f8d7da;
+      padding: 10px;
+      border-radius: 4px;
+      margin-bottom: 15px;
+    }
+    .loading-spinner {
+      display: inline-block;
+      width: 1rem;
+      height: 1rem;
+      border: 0.15em solid currentColor;
+      border-right-color: transparent;
+      border-radius: 50%;
+      animation: spinner-border .75s linear infinite;
+    }
+    @keyframes spinner-border {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1 class="mb-4">Company Research Agent</h1>
+    
+    <div class="card mb-4">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Research a Company</h5>
+        <span id="connectionStatus" class="badge bg-secondary">Connecting...</span>
+      </div>
+      <div class="card-body">
+        <form id="researchForm">
+          <div class="mb-3">
+            <label for="companyName" class="form-label">Company Name</label>
+            <input type="text" class="form-control" id="companyName" placeholder="Enter company name" required>
+          </div>
+          <div class="mb-3">
+            <label for="companyWebsite" class="form-label">Company Website (optional)</label>
+            <input type="url" class="form-control" id="companyWebsite" placeholder="https://example.com">
+          </div>
+          <button type="submit" class="btn btn-primary" id="submitButton">
+            <span id="submitSpinner" class="loading-spinner me-2 d-none"></span>
+            <span id="submitText">Research</span>
+          </button>
+        </form>
+        <div id="errorContainer" class="error-message mt-3 d-none"></div>
+      </div>
+    </div>
+    
+    <div id="statusCard" class="card d-none">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Research Status</h5>
+        <span id="statusBadge" class="badge status-badge bg-secondary">Pending</span>
+      </div>
+      <div class="card-body">
+        <p id="statusMessage">Initializing research...</p>
+        <div class="progress mb-3">
+          <div id="progressBar" class="progress-bar" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
+        </div>
+        <h6 class="mb-2">Research Categories:</h6>
+        <div id="categoriesList" class="mb-3"></div>
+      </div>
+    </div>
+    
+    <div id="resultCard" class="card d-none">
+      <div class="card-header">
+        <h5 class="mb-0">Research Results</h5>
+      </div>
+      <div class="card-body">
+        <div id="resultContainer"></div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Load scripts -->
+  <script src="search_workers/party-client.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      // Initialize the PartyKit client
+      const partyClient = new SearchPartyClient('http://localhost:1999', {
+        roomId: 'searchagent'
+      });
+      
+      // DOM elements
+      const researchForm = document.getElementById('researchForm');
+      const companyNameInput = document.getElementById('companyName');
+      const companyWebsiteInput = document.getElementById('companyWebsite');
+      const submitButton = document.getElementById('submitButton');
+      const submitSpinner = document.getElementById('submitSpinner');
+      const errorContainer = document.getElementById('errorContainer');
+      const statusCard = document.getElementById('statusCard');
+      const statusBadge = document.getElementById('statusBadge');
+      const statusMessage = document.getElementById('statusMessage');
+      const progressBar = document.getElementById('progressBar');
+      const categoriesList = document.getElementById('categoriesList');
+      const resultCard = document.getElementById('resultCard');
+      const resultContainer = document.getElementById('resultContainer');
+      const connectionStatus = document.getElementById('connectionStatus');
+      
+      // Current job ID
+      let currentJobId = null;
+      
+      // Status polling interval
+      let statusInterval = null;
+      
+      // Status badge colors
+      const statusColors = {
+        pending: 'bg-secondary',
+        in_progress: 'bg-warning',
+        completed: 'bg-success',
+        error: 'bg-danger'
+      };
+      
+      // Status messages
+      const statusMessages = {
+        pending: 'Waiting to start research...',
+        in_progress: 'Researching company information...',
+        completed: 'Research completed successfully!',
+        error: 'An error occurred during research.'
+      };
+      
+      // Connection status handling
+      function updateConnectionStatus() {
+        const status = partyClient.getConnectionStatus ? partyClient.getConnectionStatus() : { isConnected: partyClient.isConnected };
+        
+        if (status.isConnected) {
+          connectionStatus.textContent = 'Connected';
+          connectionStatus.className = 'badge bg-success';
+        } else if (status.reconnectAttempts > 0) {
+          connectionStatus.textContent = `Reconnecting (${status.reconnectAttempts})`;
+          connectionStatus.className = 'badge bg-warning';
+        } else {
+          connectionStatus.textContent = 'Disconnected';
+          connectionStatus.className = 'badge bg-danger';
+        }
+      }
+      
+      // Update connection status every 2 seconds
+      setInterval(updateConnectionStatus, 2000);
+      
+      // Listen for connection events
+      partyClient.on('connect', function() {
+        updateConnectionStatus();
+      });
+      
+      partyClient.on('disconnect', function() {
+        updateConnectionStatus();
+      });
+      
+      partyClient.on('error', function(data) {
+        updateConnectionStatus();
+        console.error('PartyKit error:', data);
+      });
+      
+      // Handle form submission
+      researchForm.addEventListener('submit', async function(event) {
+        event.preventDefault();
+        
+        // Get form values
+        const companyName = companyNameInput.value.trim();
+        const companyWebsite = companyWebsiteInput.value.trim();
+        
+        if (!companyName) {
+          showError('Please enter a company name');
+          return;
+        }
+        
+        // Clear previous results
+        resetUI();
+        
+        // Show loading state
+        setLoading(true);
+        
+        try {
+          console.log(`Starting research for company: ${companyName}`);
+          
+          // Start the research
+          const response = await partyClient.startResearch(companyName, { 
+            website: companyWebsite 
+          });
+          
+          console.log('Research API response:', response);
+          
+          if (!response || !response.success) {
+            throw new Error(response?.error || 'Failed to start research');
+          }
+          
+          // Store the job ID
+          currentJobId = response.jobId;
+          
+          console.log('Research started with job ID:', currentJobId);
+          
+          // Show the status card
+          statusCard.classList.remove('d-none');
+          
+          // Start polling for status updates
+          startStatusPolling();
+        } catch (error) {
+          console.error('Error starting research:', error);
+          showError(`Failed to start research: ${error.message || 'Unknown error'}`);
+        } finally {
+          setLoading(false);
+        }
+      });
+      
+      // Listen for status updates from the PartyKit server
+      partyClient.on('status', function(data) {
+        if (!data) {
+          console.warn('Received empty status update');
+          return;
+        }
+        
+        console.log('Status update received:', data);
+        
+        // Update the UI with the status
+        updateStatus(data);
+      });
+      
+      // Start polling for status updates
+      function startStatusPolling() {
+        if (statusInterval) {
+          clearInterval(statusInterval);
+          statusInterval = null;
+        }
+        
+        // Initial poll delay
+        let pollDelay = 3000; // Start with 3 seconds
+        const maxPollDelay = 15000; // Max 15 seconds
+        let consecutiveErrors = 0;
+        
+        // Poll immediately
+        pollStatus();
+        
+        // Then poll with increasing delay on errors
+        const poll = async () => {
+          try {
+            await pollStatus();
+            consecutiveErrors = 0;
+            
+            // Reset poll delay after successful poll
+            pollDelay = 3000;
+          } catch (error) {
+            consecutiveErrors++;
+            
+            // Increase poll delay on consecutive errors (exponential backoff)
+            if (consecutiveErrors > 1) {
+              pollDelay = Math.min(pollDelay * 1.5, maxPollDelay);
+              console.log(`Increased poll delay to ${pollDelay}ms after ${consecutiveErrors} consecutive errors`);
+            }
+          }
+          
+          // Schedule next poll
+          statusInterval = setTimeout(poll, pollDelay);
+        };
+        
+        // Start polling with the defined strategy
+        statusInterval = setTimeout(poll, pollDelay);
+      }
+      
+      // Poll for status updates
+      async function pollStatus() {
+        if (!currentJobId) {
+          return;
+        }
+        
+        try {
+          // Always use the API endpoint for status updates
+          console.log('Fetching status via API');
+          const response = await partyClient.getJobStatus(currentJobId);
+          
+          if (response.success) {
+            updateStatus(response);
+          } else {
+            throw new Error(response.error || 'Failed to get job status');
+          }
+        } catch (error) {
+          console.error('Error polling status:', error);
+          throw error; // Re-throw to trigger backoff
+        }
+      }
+      
+      // Update the UI with the status
+      function updateStatus(data) {
+        if (!data) {
+          console.warn('Received empty status data');
+          return;
+        }
+        
+        // Show the status card
+        statusCard.classList.remove('d-none');
+        
+        // Update status badge
+        const status = data.status || 'pending';
+        statusBadge.textContent = status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ');
+        
+        // Update badge color
+        for (const [statusKey, colorClass] of Object.entries(statusColors)) {
+          statusBadge.classList.remove(colorClass);
+        }
+        statusBadge.classList.add(statusColors[status] || 'bg-secondary');
+        
+        // Update status message
+        statusMessage.textContent = statusMessages[status] || 'Researching company information...';
+        
+        // Update progress bar
+        if (data.progress) {
+          const progress = data.progress;
+          const percentage = progress.total > 0 ? Math.round((progress.completed / progress.total) * 100) : 0;
+          progressBar.style.width = `${percentage}%`;
+          progressBar.textContent = `${percentage}%`;
+          progressBar.setAttribute('aria-valuenow', percentage);
+        }
+        
+        // Update categories list
+        if (data.categories) {
+          updateCategories(data.categories);
+        }
+        
+        // If completed, fetch and display the results
+        if (status === 'completed') {
+          fetchResults();
+          
+          // Stop polling
+          if (statusInterval) {
+            clearInterval(statusInterval);
+            statusInterval = null;
+          }
+        }
+      }
+      
+      // Update the categories list
+      function updateCategories(categories) {
+        categoriesList.innerHTML = '';
+        
+        for (const [category, status] of Object.entries(categories)) {
+          const categoryItem = document.createElement('div');
+          categoryItem.className = 'category-item';
+          
+          // Add status-specific class
+          if (status === 'completed') {
+            categoryItem.classList.add('completed');
+          } else if (status === 'in_progress') {
+            categoryItem.classList.add('in-progress');
+          } else if (status === 'error') {
+            categoryItem.classList.add('error');
+          }
+          
+          // Format category name
+          const formattedCategory = category
+            .split('_')
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+            .join(' ');
+          
+          // Status icon
+          let statusIcon = '';
+          if (status === 'completed') {
+            statusIcon = '✅ ';
+          } else if (status === 'in_progress') {
+            statusIcon = '⏳ ';
+          } else if (status === 'error') {
+            statusIcon = '❌ ';
+          } else {
+            statusIcon = '⏱️ ';
+          }
+          
+          categoryItem.textContent = `${statusIcon}${formattedCategory}`;
+          categoriesList.appendChild(categoryItem);
+        }
+      }
+      
+      // Fetch and display the results
+      async function fetchResults() {
+        if (!currentJobId) {
+          return;
+        }
+        
+        try {
+          const response = await partyClient.getJobResults(currentJobId);
+          
+          if (response.success && response.result) {
+            // Show the result card
+            resultCard.classList.remove('d-none');
+            
+            // Format and display the result
+            let formattedResult = '';
+            
+            if (typeof response.result === 'string') {
+              formattedResult = response.result;
+            } else if (typeof response.result === 'object') {
+              formattedResult = JSON.stringify(response.result, null, 2);
+            }
+            
+            resultContainer.textContent = formattedResult;
+          } else {
+            console.error('Invalid result format:', response);
+          }
+        } catch (error) {
+          console.error('Error fetching results:', error);
+          showError('Failed to fetch research results. Please try again later.');
+        }
+      }
+      
+      // Show an error message
+      function showError(message) {
+        errorContainer.textContent = message;
+        errorContainer.classList.remove('d-none');
+      }
+      
+      // Hide the error message
+      function hideError() {
+        errorContainer.textContent = '';
+        errorContainer.classList.add('d-none');
+      }
+      
+      // Set loading state
+      function setLoading(isLoading) {
+        const submitButton = document.getElementById('submitButton');
+        const submitSpinner = document.getElementById('submitSpinner');
+        const submitText = document.getElementById('submitText');
+        
+        if (!submitButton || !submitSpinner || !submitText) {
+          console.error('Submit button elements not found:', {
+            submitButton: !!submitButton,
+            submitSpinner: !!submitSpinner,
+            submitText: !!submitText
+          });
+          return;
+        }
+        
+        if (isLoading) {
+          submitButton.disabled = true;
+          submitSpinner.classList.remove('d-none');
+          submitText.textContent = 'Researching...';
+        } else {
+          submitButton.disabled = false;
+          submitSpinner.classList.add('d-none');
+          submitText.textContent = 'Research';
+        }
+      }
+      
+      // Reset the UI
+      function resetUI() {
+        hideError();
+        statusCard.classList.add('d-none');
+        resultCard.classList.add('d-none');
+        categoriesList.innerHTML = '';
+        resultContainer.textContent = '';
+        progressBar.style.width = '0%';
+        progressBar.textContent = '0%';
+        progressBar.setAttribute('aria-valuenow', 0);
+        
+        // Stop polling
+        if (statusInterval) {
+          clearInterval(statusInterval);
+          statusInterval = null;
+        }
+      }
+    });
+  </script>
+</body>
+</html> 

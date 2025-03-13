@@ -1,0 +1,14 @@
+{
+  "name": "searchagent",
+  "main": "search_workers/party-server.js",
+  "compatibilityDate": "2023-10-30",
+  "parties": {
+    "searchagent": "search_workers/party-server.js"
+  },
+  "vars": {
+    "AI_GATEWAY_ENDPOINT": "https://gateway.ai.cloudflare.com/v1/38786877c1bf24d2d36d539c552a997a/searchworkers-dev/openai",
+    "RESEARCH_WORKER_URL": "http://localhost:8787/research",
+    "COMPILATION_WORKER_URL": "http://localhost:8787/compilation",
+    "PARTYKIT_URL": "http://localhost:1999"
+  }
+} 

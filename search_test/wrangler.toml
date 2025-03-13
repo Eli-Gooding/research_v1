@@ -1,0 +1,23 @@
+name = "search-agent"
+main = "index.js"
+compatibility_date = "2023-10-30"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+[[r2_buckets]]
+binding = "STORAGE_BUCKET"
+bucket_name = "research-agent-storage"
+preview_bucket_name = "research-agent-storage-dev"
+
+[vars]
+AI_GATEWAY_ENDPOINT = "https://gateway.ai.cloudflare.com/v1/38786877c1bf24d2d36d539c552a997a/searchworkers-dev/openai"
+PARTYKIT_URL = "http://localhost:1999"
+
+# Dev configuration
+[dev]
+port = 8787
+local_protocol = "http"
+
+# Production secrets are set in the Cloudflare dashboard
+# [vars]
+# OPENAI_API_KEY = "your-key-here"  # DO NOT commit real keys to version control 
